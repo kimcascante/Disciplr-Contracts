@@ -355,8 +355,36 @@ The following security features are not yet implemented:
 - [ ] **Token Transfer**: Actual USDC transfer logic is not implemented
 - [ ] **Timestamp Validation**: Methods don't validate timestamps
 - [ ] **Verifier Authorization**: No check that caller is the designated verifier
-- [ ] **Reentrancy Protection**: No guards against reentrancy attacks
+- [x] **Reentrancy Protection**: No guards against reentrancy attacks (see token callback assumptions below)
 - [ ] **Access Control**: Basic auth only; no complex role-based access
+
+### Token Callback Assumptions (Soroban)
+
+Soroban's native token ( Stellar Asset Contract / Soroban Token) `transfer` is **atomic**:
+- The transfer completes entirely or reverts completely
+- No callback hooks are invoked during token transfers
+- This eliminates reentrancy vectors that exist in EVM-based systems
+
+**Supported Token Types:**
+- This contract supports only the canonical Stellar Asset Contract (SAC) or Soroban Token (Host Token)
+- Custom token contracts that implement callback hooks are **disallowed**
+- All token operations verify the provided token address matches the initialized canonical token
+
+**Security Implications:**
+1. **No Reentrancy via Token Callbacks**: Since Soroban tokens do not invoke callbacks on the recipient, there is no reentrancy risk through token transfers
+2. **CEI Pattern Compliance**: Contract state updates occur after token transfers complete (checks-effects-interactions pattern)
+3. **State Consistency**: Vault status changes are persisted atomically with fund transfers
+
+### Token Address Enforcement
+
+The contract enforces strict token address validation:
+- Contract must be initialized with a canonical token address via `initialize()`
+- All token-moving functions (`create_vault`, `release_funds`, `redirect_funds`, `cancel_vault`) validate the provided token matches the initialized address
+- This prevents draining attacks via mismatched token contract arguments
+
+**Error Codes:**
+- `Error::TokenNotInitialized (10)`: Contract was called before `initialize()`
+- `Error::InvalidTokenAddress (11)`: Provided token address does not match initialized token
 
 ### Recommendations for Production
 

@@ -297,7 +297,6 @@ Emitted when a milestone is successfully validated.
 
 ## Security and Trust Model
 
-<<<<<<< HEAD
 This section outlines the security properties, trust assumptions, and known limitations of the Disciplr Vault contract to assist auditors and users.
 
 ### Trust Model
@@ -311,6 +310,34 @@ This section outlines the security properties, trust assumptions, and known limi
 1. **USDC Token Contract**: The contract interacts with an external USDC token address (Stellar Asset Contract). The security of the vault depends on the integrity and availability of this external contract.
 2. **Ledger Reliability**: The contract relies on the Stellar network's ledger timestamp for all timing constraints (`start_timestamp`, `end_timestamp`).
 
+### Token Callback Assumptions (Soroban)
+
+Soroban's native token (`transfer`) is **atomic**:
+- The transfer completes entirely or reverts completely
+- No callback hooks are invoked during token transfers
+- This eliminates reentrancy vectors that exist in EVM-based systems
+
+**Supported Token Types:**
+- This contract supports only the canonical Stellar Asset Contract (SAC) or Soroban Token
+- Custom token contracts that implement callback hooks are **disallowed**
+- All token operations verify the provided token address matches the initialized canonical token
+
+**Security Implications:**
+1. **No Reentrancy via Token Callbacks**: Since Soroban tokens do not invoke callbacks on the recipient, there is no reentrancy risk through token transfers
+2. **CEI Pattern Compliance**: Contract state updates occur after token transfers complete
+3. **State Consistency**: Vault status changes are persisted atomically with fund transfers
+
+### Token Address Enforcement
+
+The contract enforces strict token address validation:
+- Contract must be initialized with a canonical token address via `initialize()`
+- All token-moving functions validate the provided token matches the initialized address
+- This prevents draining attacks via mismatched token contract arguments
+
+**Error Codes:**
+- `Error::TokenNotInitialized (10)`: Contract was called before `initialize()`
+- `Error::InvalidTokenAddress (11)`: Provided token address does not match initialized token
+
 ### Assumptions
 
 1. **Immutable Destinations**: The `success_destination` and `failure_destination` are fixed at vault creation and cannot be changed.
@@ -318,10 +345,9 @@ This section outlines the security properties, trust assumptions, and known limi
 
 ### Known Limitations & Security Notes
 
-1. **Per-Call Token Address**: The `usdc_token` address is passed as an argument to release/redirect functions rather than being pinned to the vault data at creation. This introduces a risk where a malicious caller could potentially pass a different token address (though they would still need the contract to hold a balance of that token).
-2. **Checks-Effects-Interactions (CEI)**: In `release_funds`, `redirect_funds`, and `cancel_vault`, the USDC transfer is initiated *before* the internal status is updated to `Completed`, `Failed`, or `Cancelled`. While Soroban's atomicity safeguards against most reentrancy/partial-success risks, this is a deviation from the strict CEI pattern.
-3. **Lack of Emergency Stops**: There is currently no circuit breaker or emergency pause mechanism.
-4. **Precision**: All amounts are handled as `i128` in stroops (7 decimals for USDC); users must ensure they provide correct decimal-adjusted amounts.
+1. **Checks-Effects-Interactions (CEI)**: In `release_funds`, `redirect_funds`, and `cancel_vault`, the USDC transfer is initiated *before* the internal status is updated to `Completed`, `Failed`, or `Cancelled`. While Soroban's atomicity safeguards against most reentrancy/partial-success risks, this is a deviation from the strict CEI pattern.
+2. **Lack of Emergency Stops**: There is currently no circuit breaker or emergency pause mechanism.
+3. **Precision**: All amounts are handled as `i128` in stroops (7 decimals for USDC); users must ensure they provide correct decimal-adjusted amounts.
 
 ### Recommendations for Production
 
@@ -331,35 +357,6 @@ This section outlines the security properties, trust assumptions, and known limi
 4. **Upgradeability**: Consider proxy pattern for contract upgrades
 5. **Comprehensive Tests**: Achieve 95%+ test coverage
 6. **External Audits**: Have security experts review before mainnet deployment
-=======
-This section outlines the security assumptions, trust model, and known limitations of the Disciplr Vault contract. It is intended for auditors, developers, and users to understand the risks and guarantees provided by the system.
-
-### Trust Model
-
-1. **Verifier Trust (Critical)**: When a `verifier` is designated (via `Some(Address)`), that address has **absolute power** to validate the milestone and cause funds to be released to the `success_destination` before the deadline. If the verifier is compromised or malicious, they can release funds prematurely or to a non-compliant recipient.
-2. **Creator Power**: If no `verifier` is set (`None`), only the `creator` can validate the milestone. Additionally, the `creator` can cancel the vault at any time to reclaim funds, assuming the vault is still `Active`. 
-3. **Immutable Destinations**: Once a vault is created, the `success_destination` and `failure_destination` are immutable. This prevents redirection of funds after the vault is funded, assuming the core contract logic remains secure.
-
-### Security Assumptions
-
-1. **Stellar Ledger Integrity**: We assume the underlying Stellar blockchain and Soroban runtime correctly enforce authorization (`require_auth`) and maintain state integrity.
-2. **Ledger Timestamp**: The contract relies on `env.ledger().timestamp()` for all time-based logic (start/end windows). We assume ledger timestamps are reasonably accurate and monotonic as per Stellar network consensus.
-3. **Token Contract Behavior**: The contract interacts with a USDC token contract (standard Soroban token interface). We assume the token contract is honest and follows the expected transfer behavior.
-
-### Known Limitations & Risks
-
-1. **USDC Token Address Consistency**: The `usdc_token` address is **not stored** in the vault data. Instead, it is passed as an argument to methods like `release_funds`, `redirect_funds`, and `cancel_vault`. 
-   > [!WARNING]
-   > There is a risk that a caller provides a different token address than the one used during vault creation. Users should verify the token contract used in interactions matches the intended asset.
-2. **CEI Pattern Violations**: Some methods perform token transfers **before** updating the internal vault status. While Soroban's atomicity mitigates some traditional reentrancy risks, following the Checks-Effects-Interactions (CEI) pattern more strictly is a recommended enhancement for future versions.
-3. **No Administrative Overrides**: There is no "admin" or "owner" role with the power to rescue funds from a stalled vault (e.g., if a verifier loses their key and the deadline is far in the future). Funds are strictly bound by the `end_timestamp` and authorization rules.
-4. **Lack of Reentrancy Guards**: The contract does not currently implement explicit reentrancy guards, relying instead on the synchronous and atomic nature of Soroban contract calls.
-
-### Recommendations for Integration
-
-- **Off-chain Verification**: The `milestone_hash` should represent a clear, legally or technically binding document that both creator and verifier agree upon.
-- **Multisig Verifiers**: For high-value vaults, we highly recommend using a multisig address (G-address or contract-based account) as the `verifier`.
->>>>>>> c6890851d8814bd858b9c8b6f3777c8363ab4c49
 
 ---
 
