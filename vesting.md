@@ -515,6 +515,11 @@ disciplr-contracts/
 
 ## Changelog
 
-| Version | Changes |
+For a complete history of all notable changes and versioned releases, please refer to [CHANGELOG.md](CHANGELOG.md).
+
+| Version | Key Changes |
 |---------|---------|
-| 0.1.0 | Initial release with basic vault structure, stubbed implementations |
+| 0.4.0   | CEI Pattern Refactor, Comprehensive Rustdoc |
+| 0.3.0   | Idempotency Guards, Sequential ID Allocation |
+| 0.2.0   | USDC Token Integration |
+| 0.1.0   | Initial Release |

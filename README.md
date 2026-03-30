@@ -33,7 +33,7 @@ See [USDC_INTEGRATION.md](./USDC_INTEGRATION.md) for detailed documentation.
 
 ## Documentation
 
-For detailed contract documentation, see [vesting.md](vesting.md).
+For detailed contract documentation, see [vesting.md](vesting.md). For a history of changes, see [CHANGELOG.md](CHANGELOG.md).
 
 ## Security
 
