@@ -226,9 +226,9 @@ pub fn get_vault_state(env: Env, vault_id: u32) -> Option<ProductivityVault>
 **Parameters:**
 - `vault_id`: ID of the vault to query
 
-**Returns:** `Option<ProductivityVault>` - Vault data if exists, None otherwise
+**Returns:** `Option<ProductivityVault>` - Stored vault data when a record exists for that ID.
 
-**Note:** Returns `None` if no vault with that ID exists; otherwise returns the full `ProductivityVault` record from persistent storage. Created vault records are not deleted during normal contract execution — completed, failed, and cancelled vaults still return `Some(ProductivityVault)` with their terminal status. `None` therefore means the ID was never assigned (`vault_id >= vault_count`) or storage was cleared outside the contract's normal lifecycle.
+**Behavior:** Created vault records are not deleted during normal contract execution. Completed, failed, and cancelled vaults still return `Some(ProductivityVault)` with their terminal status. `None` therefore means the ID was never assigned (`vault_id >= vault_count()`) or storage was cleared outside the contract's normal lifecycle.
 
 ---
 
@@ -321,9 +321,8 @@ This section outlines the security assumptions, trust model, and known limitatio
 ### Trust Model
 
 1. **Verifier Trust (Critical)**: When a `verifier` is designated (via `Some(Address)`), that address has **absolute power** to validate the milestone and cause funds to be released to the `success_destination` before the deadline. If the verifier is compromised or malicious, they can release funds prematurely or to a non-compliant recipient.
-2. **Verifier–Destination Separation (Enforced)**: The contract rejects any configuration where the `verifier` address equals `success_destination` or `failure_destination`. A verifier that is also a fund recipient has a direct financial incentive to manipulate validation outcomes in their favour. This is rejected at creation time via `Error::VerifierIsDestination` (code 10), before any funds are transferred.
-3. **Creator Power**: If no `verifier` is set (`None`), only the `creator` can validate the milestone. The `creator` can cancel the vault while it is still `Active` **and** the milestone has not yet been validated. Once validation has occurred (regardless of who validated), cancellation is blocked; funds may only leave via `release_funds`.
-4. **Immutable Destinations**: Once a vault is created, the `success_destination` and `failure_destination` are immutable. This prevents redirection of funds after the vault is funded, assuming the core contract logic remains secure.
+2. **Creator Power**: If no `verifier` is set (`None`), only the `creator` can validate the milestone. Additionally, the `creator` can cancel the vault at any time to reclaim funds, assuming the vault is still `Active`. 
+3. **Immutable Destinations**: Once a vault is created, the `success_destination` and `failure_destination` are immutable. This prevents redirection of funds after the vault is funded, assuming the core contract logic remains secure.
 
 ### Security Assumptions
 
@@ -344,6 +343,7 @@ This section outlines the security assumptions, trust model, and known limitatio
 
 - **Off-chain Verification**: The `milestone_hash` should represent a clear, legally or technically binding document that both creator and verifier agree upon.
 - **Multisig Verifiers**: For high-value vaults, we highly recommend using a multisig address (G-address or contract-based account) as the `verifier`.
+
 
 ---
 
