@@ -7,8 +7,9 @@
 1. Added `proptest` as a dev dependency in `Cargo.toml`.
 2. Added `tests/proptest_timestamps.rs` with 3 property tests and 3 explicit edge tests.
 3. Assertions for invalid paths verify exact contract errors:
-  - `Error::InvalidTimestamps`
-  - `Error::DurationTooLong`
+
+- `Error::InvalidTimestamps`
+- `Error::DurationTooLong`
 
 ### Properties Covered
 
@@ -89,6 +90,7 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 Initial coverage (with only the zero-amount test): **39.13%** (9/23 lines covered).
 Since then, the test suite has been expanded significantly (see section below) and now exercises:
+
 - All public entry points: `create_vault`, `validate_milestone`, `release_funds`, `redirect_funds`, `cancel_vault`, `get_vault_state`.
 - All major status transitions: `Active → Completed`, `Active → Failed`, `Active → Cancelled`.
 - All primary error paths: `VaultNotFound`, `VaultNotActive`, `InvalidTimestamp`, `MilestoneExpired`, `InvalidAmount`, `InvalidTimestamps`, `NotAuthorized`.
@@ -111,6 +113,7 @@ cargo llvm-cov --workspace --fail-under-lines 95
 ### Behavior
 
 When `create_vault` is called with `amount == 0` (or negative):
+
 - Contract panics with error: "amount must be positive"
 - No vault is created
 - No events are emitted
@@ -179,6 +182,7 @@ test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ### CI/CD Pipeline
 
 **GitHub Actions workflow created** (`.github/workflows/ci.yml`):
+
 - Triggers on push/PR to main/master branches
 - Runs on ubuntu-latest
 - Steps:
@@ -190,6 +194,7 @@ test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
   6. Run linter with `cargo clippy -- -D warnings`
 
 **All CI checks pass locally**:
+
 ```
 ✓ Build passed
 ✓ Tests passed
@@ -198,6 +203,7 @@ test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```
 
 **Code quality fixes applied**:
+
 - Added `#![allow(clippy::too_many_arguments)]` to handle Soroban contract design pattern
 - Applied `cargo fmt` for consistent code formatting
 - All clippy warnings resolved

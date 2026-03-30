@@ -29,9 +29,9 @@ What is validated:
 Strategy design (controlled randomness):
 
 - Valid cases use `(start_offset, duration)` with:
-   - `start = now + start_offset`
-   - `duration in 1..=MAX_VAULT_DURATION`
-   - `end = start + duration`
+  - `start = now + start_offset`
+  - `duration in 1..=MAX_VAULT_DURATION`
+  - `end = start + duration`
 - Invalid ordering uses `end = start.saturating_sub(backoff)` to guarantee `end <= start`.
 - Overflow risk is avoided by bounded ranges for `start_offset` and `duration`.
 

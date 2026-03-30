@@ -231,5 +231,8 @@ fn edge_max_duration_boundary_succeeds() {
     );
 
     let vault = client.get_vault_state(&id).unwrap();
-    assert_eq!(vault.end_timestamp - vault.start_timestamp, MAX_VAULT_DURATION);
+    assert_eq!(
+        vault.end_timestamp - vault.start_timestamp,
+        MAX_VAULT_DURATION
+    );
 }
