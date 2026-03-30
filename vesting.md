@@ -179,19 +179,28 @@ pub fn redirect_funds(env: Env, vault_id: u32) -> bool
 Allows the creator to cancel the vault and retrieve locked funds.
 
 ```rust
-pub fn cancel_vault(env: Env, vault_id: u32) -> bool
+pub fn cancel_vault(env: Env, vault_id: u32, usdc_token: Address) -> Result<bool, Error>
 ```
 
 **Parameters:**
 - `vault_id`: ID of the vault to cancel
+- `usdc_token`: Address of the USDC token contract
 
-**Returns:** `bool` - True if cancellation successful
+**Returns:** `Result<bool, Error>` - `Ok(true)` if cancellation successful
 
-**Requirements (TODO):**
-- Caller must be the vault creator
-- Vault status must be `Active`
+**Requirements:**
+- Caller must be the vault creator (`creator.require_auth()`)
+- Vault status must be `Active`; otherwise returns `Error::VaultNotActive`
+- Milestone must **not** have been validated; if `milestone_validated == true` returns `Error::MilestoneAlreadyValidated`
 - Returns USDC to creator
 - Sets status to `Cancelled`
+
+> **Security note:** Once the verifier (or authorised party) has called
+> `validate_milestone`, the escrow outcome is determined. The creator is
+> blocked from cancelling so that validated funds can only flow to
+> `success_destination` via `release_funds`. This preserves the escrow
+> invariant and prevents a malicious or regretful creator from reclaiming
+> funds after a valid completion has been certified.
 
 ---
 
@@ -258,38 +267,37 @@ Emitted when a milestone is successfully validated.
 ```
                     ┌──────────────┐
                     │   CREATED    │
-                    │              │
                     │ create_vault │
                     └──────┬───────┘
                            │
                            ▼
                     ┌──────────────┐
-         ┌─────────│    ACTIVE    │─────────┐
-         │         │              │         │
-         │         └──────────────┘         │
-         │                                    │
-         ▼                                    ▼
-┌─────────────────┐              ┌─────────────────────┐
-│ validate_       │              │  redirect_funds     │
-│ milestone()     │              │  (deadline passed)  │
-└────────┬────────┘              └──────────┬──────────┘
-         │                                   │
-         ▼                                   ▼
-┌─────────────────┐              ┌─────────────────────┐
-│   COMPLETED    │              │      FAILED        │
-│                │              │                     │
-└─────────────────┘              └─────────────────────┘
-
+         ┌─────────│    ACTIVE    │──────────────────────┐
+         │         │              │                      │
+         │         └──────┬───────┘                      │
+         │                │                              │
+         │        validate_milestone()                   │
+         │         (sets milestone_validated=true)       │
+         │                │                              │
+         │                ▼                              ▼
+         │         ┌──────────────┐         ┌──────────────────────┐
+         │         │  VALIDATED   │         │  redirect_funds      │
+         │         │ (still Active│         │  (deadline passed,   │
+         │         │  flag only)  │         │   not validated)     │
+         │         └──────┬───────┘         └──────────┬───────────┘
+         │                │                            │
+         │          release_funds()                    │
+         │                │                            ▼
+         │                ▼                 ┌──────────────────────┐
+         │         ┌──────────────┐         │       FAILED         │
+         │         │  COMPLETED   │         └──────────────────────┘
+         │         └──────────────┘
          │
+         │  cancel_vault()
+         │  (only if milestone_validated == false)
          ▼
 ┌─────────────────┐
-│ cancel_vault()  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   CANCELLED    │
-│                │
+│   CANCELLED     │
 └─────────────────┘
 ```
 
@@ -302,7 +310,7 @@ This section outlines the security assumptions, trust model, and known limitatio
 ### Trust Model
 
 1. **Verifier Trust (Critical)**: When a `verifier` is designated (via `Some(Address)`), that address has **absolute power** to validate the milestone and cause funds to be released to the `success_destination` before the deadline. If the verifier is compromised or malicious, they can release funds prematurely or to a non-compliant recipient.
-2. **Creator Power**: If no `verifier` is set (`None`), only the `creator` can validate the milestone. Additionally, the `creator` can cancel the vault at any time to reclaim funds, assuming the vault is still `Active`. 
+2. **Creator Power**: If no `verifier` is set (`None`), only the `creator` can validate the milestone. The `creator` can cancel the vault while it is still `Active` **and** the milestone has not yet been validated. Once validation has occurred (regardless of who validated), cancellation is blocked; funds may only leave via `release_funds`.
 3. **Immutable Destinations**: Once a vault is created, the `success_destination` and `failure_destination` are immutable. This prevents redirection of funds after the vault is funded, assuming the core contract logic remains secure.
 
 ### Security Assumptions

@@ -33,6 +33,9 @@ pub enum Error {
     InvalidAmount = 7,
     /// start_timestamp must be strictly less than end_timestamp.
     InvalidTimestamps = 8,
+    /// Cancellation is not allowed once the milestone has been validated; funds must be
+    /// released via `release_funds` to honour the verified commitment.
+    MilestoneAlreadyValidated = 9,
 }
 
 // ---------------------------------------------------------------------------
@@ -310,6 +313,20 @@ impl DisciplrVault {
     // -----------------------------------------------------------------------
 
     /// Cancel vault and return funds to creator.
+    ///
+    /// # Security
+    /// Cancellation is **blocked** once the milestone has been validated
+    /// (`milestone_validated == true`). At that point the verifier has
+    /// certified completion and the escrow semantics require that funds travel
+    /// exclusively through [`release_funds`] to `success_destination`.
+    /// Allowing the creator to cancel after validation would let them
+    /// unilaterally reclaim committed funds, breaking the escrow guarantee.
+    ///
+    /// # Errors
+    /// - [`Error::VaultNotFound`] — vault does not exist.
+    /// - [`Error::VaultNotActive`] — vault is not in `Active` status.
+    /// - [`Error::MilestoneAlreadyValidated`] — milestone has been validated;
+    ///   use `release_funds` instead.
     pub fn cancel_vault(env: Env, vault_id: u32, usdc_token: Address) -> Result<bool, Error> {
         let vault_key = DataKey::Vault(vault_id);
         let mut vault: ProductivityVault = env
@@ -322,6 +339,14 @@ impl DisciplrVault {
 
         if vault.status != VaultStatus::Active {
             return Err(Error::VaultNotActive);
+        }
+
+        // SECURITY NOTE: Prevent post-validation cancellation.
+        // Once the verifier (or authorised party) has validated the milestone,
+        // the escrow outcome is determined. Only release_funds may disperse
+        // funds from this point forward; the creator cannot reclaim them.
+        if vault.milestone_validated {
+            return Err(Error::MilestoneAlreadyValidated);
         }
 
         // SECURITY NOTE: Transfer vs State Update.
@@ -1159,5 +1184,119 @@ mod tests {
         let setup = TestSetup::new();
         let client = setup.client();
         client.cancel_vault(&999u32, &setup.usdc_token);
+    }
+
+    // -----------------------------------------------------------------------
+    // cancel_vault: post-validation guard (issue: prevent cancel if milestone validated)
+    // -----------------------------------------------------------------------
+
+    /// After `validate_milestone` the creator must NOT be able to cancel and
+    /// reclaim funds. The escrow outcome is determined; only `release_funds`
+    /// may move the funds forward.
+    #[test]
+    fn test_cancel_after_validate_returns_milestone_already_validated_error() {
+        let setup = TestSetup::new();
+        let client = setup.client();
+
+        setup.env.ledger().set_timestamp(setup.start_timestamp);
+        let vault_id = setup.create_default_vault();
+
+        // Validate milestone (timestamp still before end_timestamp).
+        setup.env.ledger().set_timestamp(setup.end_timestamp - 1);
+        let validated = client.validate_milestone(&vault_id);
+        assert!(validated);
+
+        // Creator attempts to cancel — must fail with MilestoneAlreadyValidated (#9).
+        let result = client.try_cancel_vault(&vault_id, &setup.usdc_token);
+        assert!(
+            result.is_err(),
+            "cancel_vault must be rejected after milestone is validated"
+        );
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            Error::MilestoneAlreadyValidated,
+        );
+
+        // Vault must remain Active (funds not moved).
+        let vault = client.get_vault_state(&vault_id).unwrap();
+        assert_eq!(vault.status, VaultStatus::Active);
+        assert!(vault.milestone_validated);
+
+        // Funds must still be held by the contract (creator balance unchanged).
+        let usdc = setup.usdc_client();
+        assert_eq!(usdc.balance(&setup.creator), 0);
+    }
+
+    /// Same guard applies when verifier is None (creator is the validator).
+    #[test]
+    fn test_cancel_after_creator_validates_no_verifier_rejected() {
+        let setup = TestSetup::new();
+        let client = setup.client();
+
+        setup.env.ledger().set_timestamp(setup.start_timestamp);
+        let vault_id = setup.create_vault_no_verifier();
+
+        setup.env.ledger().set_timestamp(setup.end_timestamp - 1);
+        client.validate_milestone(&vault_id);
+
+        let result = client.try_cancel_vault(&vault_id, &setup.usdc_token);
+        assert!(
+            result.is_err(),
+            "cancel_vault must be rejected after creator self-validates"
+        );
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            Error::MilestoneAlreadyValidated,
+        );
+    }
+
+    /// After validation the success path must still work: `release_funds` sends
+    /// funds to `success_destination` and marks the vault Completed.
+    #[test]
+    fn test_release_funds_still_works_after_validate_then_cancel_attempt() {
+        let setup = TestSetup::new();
+        let client = setup.client();
+
+        setup.env.ledger().set_timestamp(setup.start_timestamp);
+        let vault_id = setup.create_default_vault();
+
+        setup.env.ledger().set_timestamp(setup.end_timestamp - 1);
+        client.validate_milestone(&vault_id);
+
+        // Cancel attempt is rejected.
+        assert!(client
+            .try_cancel_vault(&vault_id, &setup.usdc_token)
+            .is_err());
+
+        // Release still succeeds and funds reach success_destination.
+        let usdc = setup.usdc_client();
+        let before = usdc.balance(&setup.success_dest);
+        let released = client.release_funds(&vault_id, &setup.usdc_token);
+        assert!(released);
+        assert_eq!(usdc.balance(&setup.success_dest) - before, setup.amount);
+
+        let vault = client.get_vault_state(&vault_id).unwrap();
+        assert_eq!(vault.status, VaultStatus::Completed);
+    }
+
+    /// Cancellation without prior validation must still succeed (happy path
+    /// unchanged — guard only fires when milestone_validated is true).
+    #[test]
+    fn test_cancel_without_validation_still_allowed() {
+        let setup = TestSetup::new();
+        let client = setup.client();
+
+        setup.env.ledger().set_timestamp(setup.start_timestamp);
+        let vault_id = setup.create_default_vault();
+
+        let usdc = setup.usdc_client();
+        let before = usdc.balance(&setup.creator);
+
+        let result = client.cancel_vault(&vault_id, &setup.usdc_token);
+        assert!(result);
+        assert_eq!(usdc.balance(&setup.creator) - before, setup.amount);
+
+        let vault = client.get_vault_state(&vault_id).unwrap();
+        assert_eq!(vault.status, VaultStatus::Cancelled);
     }
 }
