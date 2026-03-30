@@ -6,9 +6,7 @@ use soroban_sdk::{
     Address, BytesN, Env,
 };
 
-use disciplr_vault::{
-    DisciplrVault, DisciplrVaultClient, VaultStatus, MIN_AMOUNT,
-};
+use disciplr_vault::{DisciplrVault, DisciplrVaultClient, VaultStatus, MIN_AMOUNT};
 
 fn setup() -> (
     Env,
@@ -60,12 +58,20 @@ fn test_full_lifecycle_success() {
         &failure_dest,
     );
 
-    assert_eq!(client.get_vault_state(&vault_id).unwrap().status, VaultStatus::Active);
+    assert_eq!(
+        client.get_vault_state(&vault_id).unwrap().status,
+        VaultStatus::Active
+    );
 
     // 2. Validate Milestone
     env.ledger().set_timestamp(now + 3_600);
     client.validate_milestone(&vault_id);
-    assert!(client.get_vault_state(&vault_id).unwrap().milestone_validated);
+    assert!(
+        client
+            .get_vault_state(&vault_id)
+            .unwrap()
+            .milestone_validated
+    );
 
     // 3. Release Funds
     client.release_funds(&vault_id, &usdc);

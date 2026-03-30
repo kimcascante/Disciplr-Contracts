@@ -1455,10 +1455,7 @@ mod tests {
             last_event.1.get(0).unwrap().try_into_val(env),
             Ok(Symbol::new(env, "milestone_validated"))
         );
-        assert_eq!(
-            last_event.1.get(1).unwrap().try_into_val(env),
-            Ok(vault_id)
-        );
+        assert_eq!(last_event.1.get(1).unwrap().try_into_val(env), Ok(vault_id));
 
         // 2. release_funds event
         client.release_funds(&vault_id, &setup.usdc_token);
@@ -1469,14 +1466,8 @@ mod tests {
             last_event.1.get(0).unwrap().try_into_val(env),
             Ok(Symbol::new(env, "funds_released"))
         );
-        assert_eq!(
-            last_event.1.get(1).unwrap().try_into_val(env),
-            Ok(vault_id)
-        );
-        assert_eq!(
-            last_event.2.try_into_val(env),
-            Ok(setup.amount)
-        );
+        assert_eq!(last_event.1.get(1).unwrap().try_into_val(env), Ok(vault_id));
+        assert_eq!(last_event.2.try_into_val(env), Ok(setup.amount));
     }
 
     #[test]
@@ -1497,10 +1488,7 @@ mod tests {
             last_event.1.get(0).unwrap().try_into_val(env),
             Ok(Symbol::new(env, "funds_redirected"))
         );
-        assert_eq!(
-            last_event.2.try_into_val(env),
-            Ok(setup.amount)
-        );
+        assert_eq!(last_event.2.try_into_val(env), Ok(setup.amount));
     }
 
     #[test]
