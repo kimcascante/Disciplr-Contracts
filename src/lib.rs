@@ -35,6 +35,14 @@ pub enum Error {
     InvalidTimestamps = 8,
     /// Vault duration (end − start) exceeds MAX_VAULT_DURATION.
     DurationTooLong = 9,
+    /// Cancellation is not allowed once the milestone has been validated; funds must be
+    /// released via `release_funds` to honour the verified commitment.
+    MilestoneAlreadyValidated = 10,
+    /// The verifier address must not equal `success_destination` or `failure_destination`.
+    /// Allowing a verifier to also be a fund recipient would create a direct collusion
+    /// incentive: the verifier could validate (or withhold validation) to steer funds
+    /// toward themselves.
+    VerifierIsDestination = 11,
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +156,16 @@ impl DisciplrVault {
         let duration = end_timestamp - start_timestamp;
         if duration > MAX_VAULT_DURATION {
             return Err(Error::DurationTooLong);
+        }
+
+        // SECURITY: Verifier must not be a fund recipient.
+        // A verifier who is also a destination has a direct financial incentive to
+        // manipulate the outcome (validate to receive success funds, or withhold
+        // validation to receive failure funds). Reject at creation time.
+        if let Some(ref v) = verifier {
+            if v == &success_destination || v == &failure_destination {
+                return Err(Error::VerifierIsDestination);
+            }
         }
 
         // Pull USDC from creator into this contract.
@@ -1002,12 +1020,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "amount must be positive")]
     fn test_create_vault_zero_amount() {
         let setup = TestSetup::new();
         let client = setup.client();
 
-        client.create_vault(
+        let result = client.try_create_vault(
             &setup.usdc_token,
             &setup.creator,
             &0i128,
@@ -1018,6 +1035,8 @@ mod tests {
             &setup.success_dest,
             &setup.failure_dest,
         );
+        assert!(result.is_err(), "zero amount must be rejected");
+        assert_eq!(result.unwrap_err().unwrap(), Error::InvalidAmount);
     }
 
     #[test]
@@ -1376,7 +1395,7 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // create_vault: verifier-destination collision guard
-    // (Error::VerifierIsDestination, code #10)
+    // (Error::VerifierIsDestination, code #11)
     // -----------------------------------------------------------------------
 
     /// Happy path: verifier is a distinct address from both destinations — vault
