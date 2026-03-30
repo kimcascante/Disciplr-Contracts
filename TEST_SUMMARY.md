@@ -1,5 +1,30 @@
 # Test Summary: validate_milestone rejects non-existent vault_id
 
+## Test Summary: Fuzz Random Amounts in [MIN, MAX] (Issue #146)
+
+### Changes Made
+
+1. Added `tests/proptest_amounts.rs`.
+2. Added property tests for random amounts in `[MIN_AMOUNT, MAX_AMOUNT]`.
+3. Added explicit edge cases for min/max amount bounds and max-underfunded behavior.
+
+### Properties Covered
+
+- Random funded amounts in `[MIN_AMOUNT, MAX_AMOUNT]` succeed and persist exact `vault.amount`.
+- Random underfunded amounts in `[MIN_AMOUNT, MAX_AMOUNT]` return error via `try_create_vault`.
+
+### Edge Cases Covered
+
+- `amount = MIN_AMOUNT` succeeds.
+- `amount = MAX_AMOUNT` succeeds.
+- `amount = MAX_AMOUNT` with balance `MAX_AMOUNT - 1` errors.
+
+### Security Notes
+
+- No contract logic changes.
+- Tests ensure amount-range inputs are handled without panics in success flow.
+- Error-path behavior is validated through `try_create_vault` for insufficient balance scenarios.
+
 ## Changes Made
 
 1. Added `test_validate_milestone_rejects_non_existent_vault` in `src/lib.rs`.

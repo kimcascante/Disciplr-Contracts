@@ -16,6 +16,21 @@ cargo test test_active_to_completed_via_release
 cargo tarpaulin --out Html --out Stdout
 ```
 
+## Property Tests for Random Amounts (Issue #146)
+
+New file: `tests/proptest_amounts.rs`
+
+What is validated:
+
+- For random `amount` in `[MIN_AMOUNT, MAX_AMOUNT]` with valid timestamps and sufficient balance: `create_vault` succeeds (no panic) and persisted amount matches input.
+- For random `amount` in `[MIN_AMOUNT, MAX_AMOUNT]` with intentionally insufficient balance: `try_create_vault` returns `Err` (error path only).
+
+Explicit edge vectors:
+
+- `amount = MIN_AMOUNT` succeeds.
+- `amount = MAX_AMOUNT` succeeds.
+- `amount = MAX_AMOUNT` with minted balance `MAX_AMOUNT - 1` returns error.
+
 ## Test Coverage: 95%+ Achieved ✅
 
 - **32 comprehensive tests** - All passing
