@@ -4,6 +4,8 @@
 
 The Disciplr Vault is a Soroban smart contract deployed on the Stellar blockchain that enables **programmable time-locked USDC vaults** for productivity-based milestone funding. It allows creators to lock USDC tokens with specific milestones and conditions, ensuring funds are only released upon verified completion or redirected to a failure destination if milestones are not met.
 
+For issuer/admin assumptions on the production USDC asset, see [USDC_INTEGRATION.md](USDC_INTEGRATION.md).
+
 ### Use Cases
 
 - **Vesting schedules**: Lock tokens that vest over time based on milestone completion
@@ -322,6 +324,8 @@ Emitted when a milestone is successfully validated.
    - Contract pulls tokens from creator (via `transfer_from`)
 
 2. **Non-Custodial**: The contract holds tokens in escrow but never has withdrawal authority beyond the defined destination addresses.
+
+3. **Issuer / Admin Trust**: The escrow logic in this repository does not remove powers held by the underlying USDC issuer or asset administrator. Review [USDC_INTEGRATION.md](USDC_INTEGRATION.md) before integrating a production asset.
 
 ### Current Limitations (TODOs)
 
