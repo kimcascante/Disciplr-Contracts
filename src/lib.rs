@@ -890,6 +890,62 @@ mod tests {
         assert!(client.try_validate_milestone(&vault_id).is_err());
     }
 
+    /// Covers the requirement from Documentation_validate_milestone_wrong_status.md:
+    /// validate_milestone must return Error::VaultNotActive for Completed, Failed, and Cancelled vaults.
+    #[test]
+    fn test_validate_milestone_rejects_non_active_statuses() {
+        use crate::Error;
+
+        // --- Completed vault ---
+        {
+            let setup = TestSetup::new();
+            let client = setup.client();
+            setup.env.ledger().set_timestamp(setup.start_timestamp);
+            let vault_id = setup.create_default_vault();
+            // Validate then release to reach Completed.
+            client.validate_milestone(&vault_id);
+            client.release_funds(&vault_id, &setup.usdc_token);
+            let result = client.try_validate_milestone(&vault_id);
+            assert_eq!(
+                result,
+                Err(Ok(Error::VaultNotActive)),
+                "validate_milestone on Completed vault must return VaultNotActive"
+            );
+        }
+
+        // --- Failed vault ---
+        {
+            let setup = TestSetup::new();
+            let client = setup.client();
+            setup.env.ledger().set_timestamp(setup.start_timestamp);
+            let vault_id = setup.create_default_vault();
+            // Expire and redirect to reach Failed.
+            setup.env.ledger().set_timestamp(setup.end_timestamp + 1);
+            client.redirect_funds(&vault_id, &setup.usdc_token);
+            let result = client.try_validate_milestone(&vault_id);
+            assert_eq!(
+                result,
+                Err(Ok(Error::VaultNotActive)),
+                "validate_milestone on Failed vault must return VaultNotActive"
+            );
+        }
+
+        // --- Cancelled vault ---
+        {
+            let setup = TestSetup::new();
+            let client = setup.client();
+            setup.env.ledger().set_timestamp(setup.start_timestamp);
+            let vault_id = setup.create_default_vault();
+            client.cancel_vault(&vault_id, &setup.usdc_token);
+            let result = client.try_validate_milestone(&vault_id);
+            assert_eq!(
+                result,
+                Err(Ok(Error::VaultNotActive)),
+                "validate_milestone on Cancelled vault must return VaultNotActive"
+            );
+        }
+    }
+
     #[test]
     fn test_redirect_funds_after_deadline_without_validation() {
         let setup = TestSetup::new();
