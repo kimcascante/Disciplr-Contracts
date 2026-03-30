@@ -298,3 +298,391 @@ fn test_get_vault_state_cancelled_vault_remains_readable() {
     assert_eq!(vault.status, VaultStatus::Cancelled);
     assert!(client.get_vault_state(&1u32).is_none());
 }
+
+// -----------------------------------------------------------------------
+// Issue #140: Integration – full lifecycle success path
+// -----------------------------------------------------------------------
+
+/// e2e: create → validate → release funds to success_destination
+#[test]
+fn test_e2e_full_lifecycle_success() {
+    let (env, client, usdc, usdc_asset) = setup();
+
+    let creator = Address::generate(&env);
+    let verifier = Address::generate(&env);
+    let success_dest = Address::generate(&env);
+    let failure_dest = Address::generate(&env);
+    let now = 1_725_000_000u64;
+    env.ledger().set_timestamp(now);
+
+    usdc_asset.mint(&creator, &MIN_AMOUNT);
+
+    // Step 1: create
+    let vault_id = client.create_vault(
+        &usdc,
+        &creator,
+        &MIN_AMOUNT,
+        &now,
+        &(now + 86_400),
+        &BytesN::from_array(&env, &[7u8; 32]),
+        &Some(verifier.clone()),
+        &success_dest,
+        &failure_dest,
+    );
+    let vault = client.get_vault_state(&vault_id).unwrap();
+    assert_eq!(vault.status, VaultStatus::Active);
+    assert!(!vault.milestone_validated);
+
+    // Step 2: validate (before deadline)
+    env.ledger().set_timestamp(now + 43_200);
+    let validated = client.validate_milestone(&vault_id);
+    assert!(validated);
+    let vault = client.get_vault_state(&vault_id).unwrap();
+    assert!(vault.milestone_validated);
+    assert_eq!(vault.status, VaultStatus::Active);
+
+    // Step 3: release
+    let result = client.release_funds(&vault_id, &usdc);
+    assert!(result);
+    let vault = client.get_vault_state(&vault_id).unwrap();
+    assert_eq!(vault.status, VaultStatus::Completed);
+}
+
+/// e2e: create → deadline reached → release without explicit validation
+#[test]
+fn test_e2e_lifecycle_release_after_deadline() {
+    let (env, client, usdc, usdc_asset) = setup();
+
+    let creator = Address::generate(&env);
+    let success_dest = Address::generate(&env);
+    let failure_dest = Address::generate(&env);
+    let now = 1_725_000_000u64;
+    env.ledger().set_timestamp(now);
+
+    usdc_asset.mint(&creator, &MIN_AMOUNT);
+
+    let vault_id = client.create_vault(
+        &usdc,
+        &creator,
+        &MIN_AMOUNT,
+        &now,
+        &(now + 86_400),
+        &BytesN::from_array(&env, &[8u8; 32]),
+        &None,
+        &success_dest,
+        &failure_dest,
+    );
+
+    env.ledger().set_timestamp(now + 86_401);
+    let result = client.release_funds(&vault_id, &usdc);
+    assert!(result);
+    assert_eq!(client.get_vault_state(&vault_id).unwrap().status, VaultStatus::Completed);
+}
+
+/// e2e: create → deadline reached without validation → redirect to failure_destination
+#[test]
+fn test_e2e_lifecycle_redirect_after_deadline() {
+    let (env, client, usdc, usdc_asset) = setup();
+
+    let creator = Address::generate(&env);
+    let success_dest = Address::generate(&env);
+    let failure_dest = Address::generate(&env);
+    let now = 1_725_000_000u64;
+    env.ledger().set_timestamp(now);
+
+    usdc_asset.mint(&creator, &MIN_AMOUNT);
+
+    let vault_id = client.create_vault(
+        &usdc,
+        &creator,
+        &MIN_AMOUNT,
+        &now,
+        &(now + 86_400),
+        &BytesN::from_array(&env, &[9u8; 32]),
+        &None,
+        &success_dest,
+        &failure_dest,
+    );
+
+    env.ledger().set_timestamp(now + 86_401);
+    let result = client.redirect_funds(&vault_id, &usdc);
+    assert!(result);
+    assert_eq!(client.get_vault_state(&vault_id).unwrap().status, VaultStatus::Failed);
+}
+
+/// e2e: create → cancel → funds returned to creator
+#[test]
+fn test_e2e_lifecycle_cancel() {
+    let (env, client, usdc, usdc_asset) = setup();
+
+    let creator = Address::generate(&env);
+    let now = 1_725_000_000u64;
+    env.ledger().set_timestamp(now);
+
+    usdc_asset.mint(&creator, &MIN_AMOUNT);
+
+    let vault_id = client.create_vault(
+        &usdc,
+        &creator,
+        &MIN_AMOUNT,
+        &now,
+        &(now + 86_400),
+        &BytesN::from_array(&env, &[5u8; 32]),
+        &None,
+        &Address::generate(&env),
+        &Address::generate(&env),
+    );
+
+    let result = client.cancel_vault(&vault_id, &usdc);
+    assert!(result);
+    assert_eq!(client.get_vault_state(&vault_id).unwrap().status, VaultStatus::Cancelled);
+}
+
+// -----------------------------------------------------------------------
+// Issue #144: Gas / budget – large milestone_hash stress
+// -----------------------------------------------------------------------
+
+/// Stress: 10 vaults with max-size milestone hashes stay within Soroban budget
+#[test]
+fn test_budget_large_milestone_hash_stress() {
+    let (env, client, usdc, usdc_asset) = setup();
+
+    let now = 1_725_000_000u64;
+    env.ledger().set_timestamp(now);
+
+    for i in 0u8..10 {
+        let creator = Address::generate(&env);
+        usdc_asset.mint(&creator, &MIN_AMOUNT);
+
+        let hash = BytesN::from_array(&env, &[i; 32]);
+
+        let vault_id = client.create_vault(
+            &usdc,
+            &creator,
+            &MIN_AMOUNT,
+            &now,
+            &(now + 86_400),
+            &hash,
+            &None,
+            &Address::generate(&env),
+            &Address::generate(&env),
+        );
+
+        let vault = client.get_vault_state(&vault_id).unwrap();
+        assert_eq!(vault.milestone_hash, hash);
+    }
+}
+
+/// Stress: all-zeros and all-0xFF hashes are stored correctly
+#[test]
+fn test_budget_extreme_milestone_hash_values() {
+    let (env, client, usdc, usdc_asset) = setup();
+
+    let now = 1_725_000_000u64;
+    env.ledger().set_timestamp(now);
+
+    let hashes: [([u8; 32], u8); 2] = [([0x00; 32], 0), ([0xFF; 32], 1)];
+
+    for (raw, _) in &hashes {
+        let creator = Address::generate(&env);
+        usdc_asset.mint(&creator, &MIN_AMOUNT);
+
+        let hash = BytesN::from_array(&env, raw);
+        let vault_id = client.create_vault(
+            &usdc,
+            &creator,
+            &MIN_AMOUNT,
+            &now,
+            &(now + 86_400),
+            &hash,
+            &None,
+            &Address::generate(&env),
+            &Address::generate(&env),
+        );
+
+        assert_eq!(client.get_vault_state(&vault_id).unwrap().milestone_hash, hash);
+    }
+}
+
+// -----------------------------------------------------------------------
+// Issue #130: Event indexing – stable topic names and ordering
+// -----------------------------------------------------------------------
+
+use soroban_sdk::{Symbol, TryIntoVal};
+use soroban_sdk::testutils::Events;
+
+/// Verify vault_created event topic name is stable
+#[test]
+fn test_event_vault_created_topic() {
+    let (env, client, usdc, usdc_asset) = setup();
+
+    let creator = Address::generate(&env);
+    let now = 1_725_000_000u64;
+    env.ledger().set_timestamp(now);
+    usdc_asset.mint(&creator, &MIN_AMOUNT);
+
+    let vault_id = client.create_vault(
+        &usdc,
+        &creator,
+        &MIN_AMOUNT,
+        &now,
+        &(now + 86_400),
+        &BytesN::from_array(&env, &[1u8; 32]),
+        &None,
+        &Address::generate(&env),
+        &Address::generate(&env),
+    );
+
+    let all_events = env.events().all();
+    let found = all_events.iter().any(|(_, topics, _)| {
+        if let Ok(name) = topics.get(0).unwrap().try_into_val::<Symbol>(&env) {
+            name == Symbol::new(&env, "vault_created")
+        } else {
+            false
+        }
+    });
+    assert!(found, "vault_created event must be emitted");
+    let _ = vault_id;
+}
+
+/// Verify milestone_validated event topic name is stable
+#[test]
+fn test_event_milestone_validated_topic() {
+    let (env, client, usdc, usdc_asset) = setup();
+
+    let creator = Address::generate(&env);
+    let now = 1_725_000_000u64;
+    env.ledger().set_timestamp(now);
+    usdc_asset.mint(&creator, &MIN_AMOUNT);
+
+    let vault_id = client.create_vault(
+        &usdc,
+        &creator,
+        &MIN_AMOUNT,
+        &now,
+        &(now + 86_400),
+        &BytesN::from_array(&env, &[2u8; 32]),
+        &None,
+        &Address::generate(&env),
+        &Address::generate(&env),
+    );
+
+    client.validate_milestone(&vault_id);
+
+    let all_events = env.events().all();
+    let found = all_events.iter().any(|(_, topics, _)| {
+        if let Ok(name) = topics.get(0).unwrap().try_into_val::<Symbol>(&env) {
+            name == Symbol::new(&env, "milestone_validated")
+        } else {
+            false
+        }
+    });
+    assert!(found, "milestone_validated event must be emitted");
+}
+
+/// Verify funds_released event topic name is stable
+#[test]
+fn test_event_funds_released_topic() {
+    let (env, client, usdc, usdc_asset) = setup();
+
+    let creator = Address::generate(&env);
+    let now = 1_725_000_000u64;
+    env.ledger().set_timestamp(now);
+    usdc_asset.mint(&creator, &MIN_AMOUNT);
+
+    let vault_id = client.create_vault(
+        &usdc,
+        &creator,
+        &MIN_AMOUNT,
+        &now,
+        &(now + 86_400),
+        &BytesN::from_array(&env, &[3u8; 32]),
+        &None,
+        &Address::generate(&env),
+        &Address::generate(&env),
+    );
+
+    env.ledger().set_timestamp(now + 86_401);
+    client.release_funds(&vault_id, &usdc);
+
+    let all_events = env.events().all();
+    let found = all_events.iter().any(|(_, topics, _)| {
+        if let Ok(name) = topics.get(0).unwrap().try_into_val::<Symbol>(&env) {
+            name == Symbol::new(&env, "funds_released")
+        } else {
+            false
+        }
+    });
+    assert!(found, "funds_released event must be emitted");
+}
+
+/// Verify funds_redirected event topic name is stable
+#[test]
+fn test_event_funds_redirected_topic() {
+    let (env, client, usdc, usdc_asset) = setup();
+
+    let creator = Address::generate(&env);
+    let now = 1_725_000_000u64;
+    env.ledger().set_timestamp(now);
+    usdc_asset.mint(&creator, &MIN_AMOUNT);
+
+    let vault_id = client.create_vault(
+        &usdc,
+        &creator,
+        &MIN_AMOUNT,
+        &now,
+        &(now + 86_400),
+        &BytesN::from_array(&env, &[4u8; 32]),
+        &None,
+        &Address::generate(&env),
+        &Address::generate(&env),
+    );
+
+    env.ledger().set_timestamp(now + 86_401);
+    client.redirect_funds(&vault_id, &usdc);
+
+    let all_events = env.events().all();
+    let found = all_events.iter().any(|(_, topics, _)| {
+        if let Ok(name) = topics.get(0).unwrap().try_into_val::<Symbol>(&env) {
+            name == Symbol::new(&env, "funds_redirected")
+        } else {
+            false
+        }
+    });
+    assert!(found, "funds_redirected event must be emitted");
+}
+
+/// Verify vault_cancelled event topic name is stable
+#[test]
+fn test_event_vault_cancelled_topic() {
+    let (env, client, usdc, usdc_asset) = setup();
+
+    let creator = Address::generate(&env);
+    let now = 1_725_000_000u64;
+    env.ledger().set_timestamp(now);
+    usdc_asset.mint(&creator, &MIN_AMOUNT);
+
+    let vault_id = client.create_vault(
+        &usdc,
+        &creator,
+        &MIN_AMOUNT,
+        &now,
+        &(now + 86_400),
+        &BytesN::from_array(&env, &[6u8; 32]),
+        &None,
+        &Address::generate(&env),
+        &Address::generate(&env),
+    );
+
+    client.cancel_vault(&vault_id, &usdc);
+
+    let all_events = env.events().all();
+    let found = all_events.iter().any(|(_, topics, _)| {
+        if let Ok(name) = topics.get(0).unwrap().try_into_val::<Symbol>(&env) {
+            name == Symbol::new(&env, "vault_cancelled")
+        } else {
+            false
+        }
+    });
+    assert!(found, "vault_cancelled event must be emitted");
+}
