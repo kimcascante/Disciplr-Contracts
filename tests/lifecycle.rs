@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    token::StellarAssetClient,
+    token::{StellarAssetClient, TokenClient},
     Address, BytesN, Env,
 };
 
@@ -15,6 +15,7 @@ fn setup() -> (
     DisciplrVaultClient<'static>,
     Address,
     StellarAssetClient<'static>,
+    TokenClient<'static>,
 ) {
     let env = Env::default();
     env.mock_all_auths();
@@ -26,13 +27,14 @@ fn setup() -> (
     let usdc_token = env.register_stellar_asset_contract_v2(usdc_admin.clone());
     let usdc_addr = usdc_token.address();
     let usdc_asset = StellarAssetClient::new(&env, &usdc_addr);
+    let usdc_token_client = TokenClient::new(&env, &usdc_addr);
 
-    (env, client, usdc_addr, usdc_asset)
+    (env, client, usdc_addr, usdc_asset, usdc_token_client)
 }
 
 #[test]
 fn test_full_lifecycle_success() {
-    let (env, client, usdc, usdc_asset) = setup();
+    let (env, client, usdc, usdc_asset, usdc_token) = setup();
 
     let creator = Address::generate(&env);
     let verifier = Address::generate(&env);
@@ -69,12 +71,12 @@ fn test_full_lifecycle_success() {
     client.release_funds(&vault_id, &usdc);
     let final_state = client.get_vault_state(&vault_id).unwrap();
     assert_eq!(final_state.status, VaultStatus::Completed);
-    assert_eq!(usdc_asset.balance(&success_dest), MIN_AMOUNT);
+    assert_eq!(usdc_token.balance(&success_dest), MIN_AMOUNT);
 }
 
 #[test]
 fn test_full_lifecycle_failure_redirection() {
-    let (env, client, usdc, usdc_asset) = setup();
+    let (env, client, usdc, usdc_asset, usdc_token) = setup();
 
     let creator = Address::generate(&env);
     let success_dest = Address::generate(&env);
@@ -106,5 +108,5 @@ fn test_full_lifecycle_failure_redirection() {
     client.redirect_funds(&vault_id, &usdc);
     let final_state = client.get_vault_state(&vault_id).unwrap();
     assert_eq!(final_state.status, VaultStatus::Failed);
-    assert_eq!(usdc_asset.balance(&failure_dest), MIN_AMOUNT);
+    assert_eq!(usdc_token.balance(&failure_dest), MIN_AMOUNT);
 }
