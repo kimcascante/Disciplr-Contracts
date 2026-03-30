@@ -234,7 +234,18 @@ impl DisciplrVault {
     // release_funds
     // -----------------------------------------------------------------------
 
-    /// Release vault funds to `success_destination`.
+    /// Release locked funds to `success_destination`.
+    ///
+    /// Funds may be released in two scenarios:
+    /// 1. The verifier (or creator when `verifier` is `None`) has called `validate_milestone`
+    ///    before the deadline — early release is allowed immediately after validation.
+    /// 2. The ledger timestamp has reached or passed `end_timestamp` — anyone may trigger
+    ///    release after the deadline regardless of validation state.
+    ///
+    /// # Errors
+    /// - [`Error::VaultNotFound`] — no vault exists for `vault_id`.
+    /// - [`Error::VaultNotActive`] — vault is not in `Active` status.
+    /// - [`Error::NotAuthorized`] — neither validated nor past deadline.
     pub fn release_funds(env: Env, vault_id: u32, usdc_token: Address) -> Result<bool, Error> {
         let vault_key = DataKey::Vault(vault_id);
         let mut vault: ProductivityVault = env
@@ -278,6 +289,15 @@ impl DisciplrVault {
     // -----------------------------------------------------------------------
 
     /// Redirect funds to `failure_destination` (e.g. after deadline without validation).
+    ///
+    /// Called when the commitment period has expired and the milestone was never validated.
+    /// Transfers the locked amount to `failure_destination` and sets vault status to `Failed`.
+    ///
+    /// # Errors
+    /// - [`Error::VaultNotFound`] — no vault exists for `vault_id`.
+    /// - [`Error::VaultNotActive`] — vault is not in `Active` status.
+    /// - [`Error::InvalidTimestamp`] — current time is before `end_timestamp` (too early).
+    /// - [`Error::NotAuthorized`] — milestone was already validated; use `release_funds` instead.
     pub fn redirect_funds(env: Env, vault_id: u32, usdc_token: Address) -> Result<bool, Error> {
         let vault_key = DataKey::Vault(vault_id);
         let mut vault: ProductivityVault = env
@@ -321,6 +341,16 @@ impl DisciplrVault {
     // -----------------------------------------------------------------------
 
     /// Cancel vault and return funds to creator.
+    ///
+    /// Only the vault creator may cancel. Vault must be in `Active` status.
+    /// Transfers the locked amount back to `creator` and sets status to `Cancelled`.
+    ///
+    /// # Authorization
+    /// Requires `creator.require_auth()` — the transaction must be signed by the creator.
+    ///
+    /// # Errors
+    /// - [`Error::VaultNotFound`] — no vault exists for `vault_id`.
+    /// - [`Error::VaultNotActive`] — vault is already `Completed`, `Failed`, or `Cancelled`.
     pub fn cancel_vault(env: Env, vault_id: u32, usdc_token: Address) -> Result<bool, Error> {
         let vault_key = DataKey::Vault(vault_id);
         let mut vault: ProductivityVault = env

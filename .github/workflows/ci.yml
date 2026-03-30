@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, "audit/**" ]
   pull_request:
     branches: [ main, master ]
 
@@ -21,10 +21,10 @@ jobs:
         toolchain: stable
     
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --locked --verbose
     
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --locked --verbose
     
     - name: Check formatting
       run: cargo fmt -- --check
