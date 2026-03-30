@@ -298,3 +298,11 @@ fn test_get_vault_state_cancelled_vault_remains_readable() {
     assert_eq!(vault.status, VaultStatus::Cancelled);
     assert!(client.get_vault_state(&1u32).is_none());
 }
+
+#[test]
+fn test_contract_version_discovery() {
+    let (_env, client, _usdc, _usdc_asset) = setup();
+    let version = client.version();
+    // Verify it matches the version in Cargo.toml (0.1.0)
+    assert_eq!(version, soroban_sdk::Symbol::new(&_env, "0.1.0"));
+}
