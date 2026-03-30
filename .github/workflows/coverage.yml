@@ -16,6 +16,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
+          target: wasm32-unknown-unknown
 
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin
@@ -38,8 +39,7 @@ jobs:
         run: |
           COVERAGE=$(cargo tarpaulin --out Stdout | grep -oP '\d+\.\d+(?=% coverage)' | head -1)
           echo "Current coverage: $COVERAGE%"
-          # Note: 92%+ is acceptable given Soroban SDK event publishing limitations
-          # Functional coverage of business logic is 100%
+          # Keep existing threshold to avoid breaking CI
           if (( $(echo "$COVERAGE >= 90.0" | bc -l) )); then
             echo "✅ Coverage threshold met: $COVERAGE% >= 90%"
             exit 0
