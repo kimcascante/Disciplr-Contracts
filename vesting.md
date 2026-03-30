@@ -69,6 +69,23 @@ pub struct ProductivityVault {
 
 ---
 
+## Error Codes
+
+The following numeric error codes map directly to the `Error` enum used by the contract. These codes are the u32 values returned on revert and must match the on-chain compiled behavior.
+
+| Code | Error | Description |
+|------|-------|-------------|
+| 1 | `VaultNotFound` | Vault with the given id does not exist. |
+| 2 | `NotAuthorized` | Caller is not authorized for this operation (e.g. not verifier/creator, or release before deadline without validation). |
+| 3 | `VaultNotActive` | Vault is not in Active status (e.g. already Completed, Failed, or Cancelled). |
+| 4 | `InvalidTimestamp` | Timestamp constraint violated (e.g. redirect before `end_timestamp`, or invalid time window). |
+| 5 | `MilestoneExpired` | Validation is no longer allowed because current time is at or past `end_timestamp`. |
+| 6 | `InvalidStatus` | Vault is in an invalid status for the requested operation. |
+| 7 | `InvalidAmount` | Amount must be positive (e.g. `create_vault` amount <= 0). |
+| 8 | `InvalidTimestamps` | `start_timestamp` must be strictly less than `end_timestamp`. |
+| 9 | `DurationTooLong` | Vault duration (end − start) exceeds `MAX_VAULT_DURATION`. |
+
+
 ## Contract Methods
 
 ### `create_vault`
