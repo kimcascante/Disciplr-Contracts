@@ -103,7 +103,10 @@ pub fn create_vault(
 
 **Requirements:**
 - Caller must authorize the transaction (`creator.require_auth()`)
-- `end_timestamp` must be greater than `start_timestamp`
+- `amount` must be within `[MIN_AMOUNT, MAX_AMOUNT]`; otherwise returns `Error::InvalidAmount`
+- `start_timestamp` must be strictly less than `end_timestamp`; otherwise returns `Error::InvalidTimestamps`
+- `end_timestamp - start_timestamp` must not exceed `MAX_VAULT_DURATION`; otherwise returns `Error::DurationTooLong`
+- `success_destination` must differ from `failure_destination`; otherwise returns `Error::SameDestination` (error code `#10`)
 - USDC transfer must be approved by creator before calling
 
 **Emits:** [`vault_created`](#vault_created) event
@@ -322,6 +325,7 @@ This section outlines the security properties, trust assumptions, and known limi
 2. **Checks-Effects-Interactions (CEI)**: In `release_funds`, `redirect_funds`, and `cancel_vault`, the USDC transfer is initiated *before* the internal status is updated to `Completed`, `Failed`, or `Cancelled`. While Soroban's atomicity safeguards against most reentrancy/partial-success risks, this is a deviation from the strict CEI pattern.
 3. **Lack of Emergency Stops**: There is currently no circuit breaker or emergency pause mechanism.
 4. **Precision**: All amounts are handled as `i128` in stroops (7 decimals for USDC); users must ensure they provide correct decimal-adjusted amounts.
+5. **Equal Destinations Rejected (Issue #124)**: `success_destination` and `failure_destination` must be different addresses. If they were equal, the outcome of the vault (success vs. failure) would be financially indistinguishable for the creator: funds would arrive at the same address regardless of whether the milestone was completed. This eliminates the accountability incentive that is the core purpose of the vault, and could be used to disguise a vault with no real consequence for non-completion. The contract enforces this at creation time with `Error::SameDestination` (code `#10`).
 
 ### Recommendations for Production
 
