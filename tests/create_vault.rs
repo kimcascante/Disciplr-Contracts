@@ -298,3 +298,51 @@ fn test_get_vault_state_cancelled_vault_remains_readable() {
     assert_eq!(vault.status, VaultStatus::Cancelled);
     assert!(client.get_vault_state(&1u32).is_none());
 }
+
+#[test]
+fn test_duration_exactly_max_allowed() {
+    let (env, client, usdc, usdc_asset) = setup();
+
+    let creator = Address::generate(&env);
+    let now = 1_725_000_000u64;
+    env.ledger().set_timestamp(now);
+
+    usdc_asset.mint(&creator, &MIN_AMOUNT);
+
+    let vault_id = client.create_vault(
+        &usdc,
+        &creator,
+        &MIN_AMOUNT,
+        &now,
+        &(now + MAX_VAULT_DURATION),
+        &BytesN::from_array(&env, &[0u8; 32]),
+        &None,
+        &Address::generate(&env),
+        &Address::generate(&env),
+    );
+
+    let vault = client.get_vault_state(&vault_id).unwrap();
+    assert_eq!(vault.end_timestamp - vault.start_timestamp, MAX_VAULT_DURATION);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #9)")]
+fn test_duration_one_second_over_max_rejected() {
+    let (env, client, usdc, _usdc_asset) = setup();
+
+    let creator = Address::generate(&env);
+    let now = 1_725_000_000u64;
+    env.ledger().set_timestamp(now);
+
+    client.create_vault(
+        &usdc,
+        &creator,
+        &MIN_AMOUNT,
+        &now,
+        &(now + MAX_VAULT_DURATION + 1),
+        &BytesN::from_array(&env, &[0u8; 32]),
+        &None,
+        &Address::generate(&env),
+        &Address::generate(&env),
+    );
+}
