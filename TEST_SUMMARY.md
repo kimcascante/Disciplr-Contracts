@@ -1,5 +1,40 @@
 # Test Summary: validate_milestone rejects non-existent vault_id
 
+## Test Summary: Property Tests for Timestamp Ordering (Issue #136)
+
+### Changes Made
+
+1. Added `proptest` as a dev dependency in `Cargo.toml`.
+2. Added `tests/proptest_timestamps.rs` with 3 property tests and 3 explicit edge tests.
+3. Assertions for invalid paths verify exact contract errors:
+  - `Error::InvalidTimestamps`
+  - `Error::DurationTooLong`
+
+### Properties Covered
+
+- Valid random `(start, end)` ordering (`start < end`) creates vaults successfully.
+- Invalid ordering (`start >= end`) always fails.
+- Duration above `MAX_VAULT_DURATION` always fails.
+
+### Edge Cases Covered
+
+- `start == end` rejected.
+- `start = 0`, `end = 1` accepted when ledger timestamp is `0`.
+- Boundary `duration = MAX_VAULT_DURATION` accepted.
+
+### Test Output
+
+`cargo test` passed with the new suite:
+
+- `tests/proptest_timestamps.rs`: 6 passed
+- Full suite: 66 passed, 0 failed
+
+### Security Notes
+
+- No contract logic changes.
+- Tests strengthen guarantees that timestamp ordering and duration bounds are fail-closed.
+- Exact error assertions reduce risk of false positives in failure-path tests.
+
 ## Changes Made
 
 1. Added `test_validate_milestone_rejects_non_existent_vault` in `src/lib.rs`.
