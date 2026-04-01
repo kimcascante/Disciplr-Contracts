@@ -1,3 +1,4 @@
+<<<<<<< doc/amount-bounds
 #![no_std]
 #![allow(clippy::too_many_arguments)]
 
@@ -1543,3 +1544,5 @@ mod test {
         assert_eq!(token_client.balance(&vault_contract), MIN_AMOUNT);
     }
 }
+=======
+>>>>>>> main
