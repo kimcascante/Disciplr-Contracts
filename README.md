@@ -35,6 +35,44 @@ See [USDC_INTEGRATION.md](./USDC_INTEGRATION.md) for detailed documentation.
 
 For detailed contract documentation, see [vesting.md](vesting.md).
 
+## Backend Integration
+
+This contract provides a complete REST API mapping for backend integration. The contract methods map to the following API endpoints:
+
+| Contract Method | HTTP Method | API Endpoint |
+|----------------|-------------|--------------|
+| `create_vault` | POST | `/api/v1/vaults` |
+| `validate_milestone` | POST | `/api/v1/vaults/{vault_id}/validate` |
+| `release_funds` | POST | `/api/v1/vaults/{vault_id}/release` |
+| `redirect_funds` | POST | `/api/v1/vaults/{vault_id}/redirect` |
+| `cancel_vault` | POST | `/api/v1/vaults/{vault_id}/cancel` |
+| `get_vault_state` | GET | `/api/v1/vaults/{vault_id}` |
+| `vault_count` | GET | `/api/v1/vaults/count` |
+
+### API Payload Example
+
+**Create Vault Request:**
+```json
+{
+  "usdc_token": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+  "creator": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "amount": "1000000000",
+  "start_timestamp": 1704067200,
+  "end_timestamp": 1706640000,
+  "milestone_hash": "4d696c6573746f6e655f726571756972656d656e74735f68617368",
+  "verifier": "GB7XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+  "success_destination": "GC7XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+  "failure_destination": "GD7XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+}
+```
+
+See [`src/doc.md`](./src/doc.md) for complete backend integration guide with:
+- Full API payload schemas
+- Error handling mappings
+- TypeScript/JavaScript implementation patterns
+- Security considerations
+- Event monitoring patterns
+
 ## Security
 
 The Disciplr Vault follows a transparent security model based on creator authorization and optional third-party verification. For a detailed analysis of the trust model, assumptions, and known limitations (including CEI pattern notes), please refer to the [Security and Trust Model](vesting.md#security-and-trust-model) in the documentation.

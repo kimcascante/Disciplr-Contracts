@@ -341,7 +341,34 @@ impl DisciplrVault {
     // redirect_funds
     // -----------------------------------------------------------------------
 
-    /// Redirect funds to `failure_destination` (e.g. after deadline without validation).
+    /// Redirect vault funds to `failure_destination` when deadline passes without validation.
+    ///
+    /// # Authorization
+    /// Anyone can call this function - authorization is based on vault state conditions.
+    ///
+    /// # Preconditions
+    /// - Vault must exist and be in `Active` status
+    /// - Current ledger time must be >= `end_timestamp`
+    /// - `milestone_validated` must be false
+    ///
+    /// # Effects
+    /// - Transfers locked USDC to `failure_destination`
+    /// - Sets vault status to `Failed`
+    /// - Emits `funds_redirected` event
+    ///
+    /// # Errors
+    /// - `VaultNotFound` (1): Vault does not exist
+    /// - `VaultNotActive` (3): Vault is not in Active status
+    /// - `InvalidTimestamp` (4): Deadline has not been reached yet
+    /// - `NotAuthorized` (2): Milestone was validated - use `release_funds` instead
+    ///
+    /// # Security Considerations
+    /// This function can be called by any address once the deadline passes without validation.
+    /// The USDC token address is passed as a parameter - backends should validate against trusted contracts.
+    ///
+    /// # API Mapping
+    /// - HTTP: `POST /api/v1/vaults/{vault_id}/redirect`
+    /// - Request: `{ "vault_id": 42, "usdc_token": "C...", "caller_signature": "..." }`
     pub fn redirect_funds(env: Env, vault_id: u32, usdc_token: Address) -> Result<bool, Error> {
         let vault_key = DataKey::Vault(vault_id);
         let mut vault: ProductivityVault = env
@@ -384,7 +411,31 @@ impl DisciplrVault {
     // cancel_vault
     // -----------------------------------------------------------------------
 
-    /// Cancel vault and return funds to creator.
+    /// Cancel an active vault and return all funds to the creator.
+    ///
+    /// # Authorization
+    /// Only the vault creator can cancel. Requires `creator.require_auth()`.
+    ///
+    /// # Preconditions
+    /// - Vault must exist and be in `Active` status
+    /// - Caller must be the vault creator
+    ///
+    /// # Effects
+    /// - Transfers locked USDC back to `creator`
+    /// - Sets vault status to `Cancelled`
+    /// - Emits `vault_cancelled` event
+    ///
+    /// # Errors
+    /// - `VaultNotFound` (1): Vault does not exist
+    /// - `VaultNotActive` (3): Vault is not in Active status
+    ///
+    /// # Security Considerations
+    /// Only the creator can cancel. The USDC token address is passed as a parameter -
+    /// backends should validate against trusted contracts.
+    ///
+    /// # API Mapping
+    /// - HTTP: `POST /api/v1/vaults/{vault_id}/cancel`
+    /// - Request: `{ "vault_id": 42, "usdc_token": "C...", "creator_signature": "..." }`
     pub fn cancel_vault(env: Env, vault_id: u32, usdc_token: Address) -> Result<bool, Error> {
         let vault_key = DataKey::Vault(vault_id);
         let mut vault: ProductivityVault = env
@@ -430,7 +481,18 @@ impl DisciplrVault {
         env.storage().instance().get(&DataKey::Vault(vault_id))
     }
 
-    /// Return the number of vault IDs assigned so far.
+    /// Return the total number of vaults created.
+    ///
+    /// This is a view function that returns the count of all vaults ever created,
+    /// regardless of their current status. The count includes vaults in any
+    /// state (Active, Completed, Failed, Cancelled).
+    ///
+    /// # Returns
+    /// `u32` - The total number of vault IDs assigned (0-indexed, so next vault ID = count)
+    ///
+    /// # API Mapping
+    /// - HTTP: `GET /api/v1/vaults/count`
+    /// - Response: `{ "count": 157, "as_of_ledger": 12345690 }`
     pub fn vault_count(env: Env) -> u32 {
         env.storage()
             .instance()

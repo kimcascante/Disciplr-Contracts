@@ -260,6 +260,113 @@ Emitted when a milestone is successfully validated.
 
 ---
 
+## API Payload Mapping for Backend Integration
+
+This section maps contract methods to REST API payloads for backend integration. See [`src/doc.md`](./src/doc.md) for complete backend integration guide.
+
+### REST API Endpoints
+
+| Contract Method | HTTP Method | API Endpoint |
+|----------------|-------------|--------------|
+| `create_vault` | POST | `/api/v1/vaults` |
+| `validate_milestone` | POST | `/api/v1/vaults/{vault_id}/validate` |
+| `release_funds` | POST | `/api/v1/vaults/{vault_id}/release` |
+| `redirect_funds` | POST | `/api/v1/vaults/{vault_id}/redirect` |
+| `cancel_vault` | POST | `/api/v1/vaults/{vault_id}/cancel` |
+| `get_vault_state` | GET | `/api/v1/vaults/{vault_id}` |
+| `vault_count` | GET | `/api/v1/vaults/count` |
+
+### Create Vault API Payload
+
+**Request:**
+```json
+{
+  "usdc_token": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+  "creator": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "amount": "1000000000",
+  "start_timestamp": 1704067200,
+  "end_timestamp": 1706640000,
+  "milestone_hash": "4d696c6573746f6e655f726571756972656d656e74735f68617368",
+  "verifier": "GB7XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+  "success_destination": "GC7XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+  "failure_destination": "GD7XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+}
+```
+
+**Response:**
+```json
+{
+  "vault_id": 42,
+  "status": "Active",
+  "transaction_hash": "db7e7f0e81dcde2f38b7c8d7b9c5c3a2b1d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8",
+  "ledger_sequence": 12345678,
+  "created_at": "2024-01-01T00:00:00Z"
+}
+```
+
+### Validate Milestone API Payload
+
+**Request:**
+```json
+{
+  "vault_id": 42,
+  "verifier_signature": "signature_data_here"
+}
+```
+
+**Response:**
+```json
+{
+  "vault_id": 42,
+  "milestone_validated": true,
+  "transaction_hash": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+  "ledger_sequence": 12345680,
+  "validated_at": "2024-01-15T12:30:00Z"
+}
+```
+
+### Release Funds API Payload
+
+**Request:**
+```json
+{
+  "vault_id": 42,
+  "usdc_token": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+  "caller_signature": "signature_data_here"
+}
+```
+
+**Response:**
+```json
+{
+  "vault_id": 42,
+  "status": "Completed",
+  "amount_released": "1000000000",
+  "destination": "GC7XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+  "transaction_hash": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3",
+  "ledger_sequence": 12345682,
+  "released_at": "2024-01-20T00:00:00Z"
+}
+```
+
+### Error Response Format
+
+```json
+{
+  "error": {
+    "code": "VAULT_NOT_FOUND",
+    "message": "Vault with ID 42 does not exist",
+    "contract_error": "VaultNotFound",
+    "contract_error_code": 1,
+    "details": {
+      "vault_id": 42
+    }
+  }
+}
+```
+
+---
+
 ## Lifecycle
 
 ```
