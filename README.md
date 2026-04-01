@@ -347,6 +347,41 @@ Emitted when a milestone is successfully validated.
 
 2. **Non-Custodial**: The contract holds tokens in escrow but never has withdrawal authority beyond the defined destination addresses.
 
+### Reentrancy and Token Callback Assumptions
+
+The Disciplr Vault contract is protected against reentrancy attacks through the following mechanisms:
+
+#### Soroban Token Transfer Atomicity
+
+The Soroban token `transfer` operation is **atomic** — it completes entirely within a single contract invocation without invoking callbacks to the calling contract. Specifically:
+
+- When `token_client.transfer(&from, &to, &amount)` is called, the token contract executes the transfer internally and returns immediately
+- There is **no callback mechanism** that would allow the token contract to re-invoke the Disciplr Vault contract during a transfer
+- This means there are no reentrancy vectors via malicious token contracts in standard Soroban token implementations
+
+#### Custom Token Restrictions
+
+For deployments using the standard Soroban token interface (including Stellar Asset Contracts and standard ERC-20-like tokens deployed on Soroban):
+
+- **No custom token callbacks**: The contract assumes the token being used does not implement callback hooks to the caller
+- **Assumption**: Custom tokens that implement reentrant callbacks are not supported in standard deployments
+- **Mitigation**: If custom tokens are allowed, additional guards (e.g., reentrancy locks) should be implemented
+
+#### Deployment-Specific Assumptions
+
+This documentation assumes:
+
+1. **Standard Stellar Asset Contract (SAC)**: When using Stellar's native USDC or other Stellar Asset Contracts, the token interface provides no callback mechanism
+2. **No custom token allowlist**: The contract currently does not enforce an allowlist of permitted token contracts
+3. **Trust in token contract**: Users must trust that the token contract behaves according to its documented interface
+
+#### Security Note
+
+If the deployment environment allows arbitrary token contracts, additional security measures should be considered:
+- Implement a reentrancy guard (e.g., `nonreentrant` modifier or explicit state checks before/after external calls)
+- Maintain an allowlist of verified token contract addresses
+- Document the trust assumptions clearly for integrators
+
 ### Current Limitations (TODOs)
 
 The following security features are not yet implemented:
@@ -539,6 +574,26 @@ cargo build --target wasm32-unknown-unknown --release
 
 Output: `target/wasm32-unknown-unknown/release/disciplr_vault.wasm`
 
+### Format
+
+Code style is enforced by `rustfmt`. The CI pipeline runs `cargo fmt -- --check` as a **dedicated `fmt` job** that must pass before the build/test job is allowed to start. This gives reviewers and auditors a clear, isolated signal when a PR has style issues.
+
+Formatting rules are pinned in [`rustfmt.toml`](./rustfmt.toml).
+
+Check formatting locally (exact mirror of CI):
+
+```bash
+cargo fmt -- --check
+```
+
+Auto-fix all formatting in place:
+
+```bash
+cargo fmt
+```
+
+> If `cargo fmt -- --check` exits non-zero, run `cargo fmt` and commit the result before pushing.
+
 ### Test
 
 ```bash
@@ -685,19 +740,25 @@ git push origin feature/your-feature-name
 
 Before submitting a PR:
 
-1. **Run all tests**:
+1. **Check formatting** (CI gate — must pass first):
+   ```bash
+   cargo fmt -- --check
+   # If it fails, run: cargo fmt
+   ```
+
+2. **Run all tests**:
    ```bash
    cargo test
    ```
 
-2. **Build for release**:
+3. **Build for release**:
    ```bash
    cargo build --target wasm32-unknown-unknown --release
    ```
 
-3. **Verify no warnings**:
+4. **Verify no warnings**:
    ```bash
-   cargo clippy
+   cargo clippy -- -D warnings
    ```
 
 ### Test Coverage

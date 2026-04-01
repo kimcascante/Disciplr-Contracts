@@ -112,20 +112,27 @@ pub fn create_vault(
 
 ### `validate_milestone`
 
-Allows the verifier (or authorized party) to validate milestone completion and release funds.
+Allows the verifier (or authorized party) to validate milestone completion.
 
 ```rust
-pub fn validate_milestone(env: Env, vault_id: u32) -> bool
+pub fn validate_milestone(env: Env, vault_id: u32) -> Result<bool, Error>
 ```
 
 **Parameters:**
 - `vault_id`: ID of the vault to validate
 
-**Returns:** `bool` - True if validation successful
+**Returns:** `Result<bool, Error>` - `Ok(true)` if validation successful
 
-**Requirements (TODO):**
+**Errors:**
+- `Error::VaultNotFound` - Vault with given ID does not exist
+- `Error::VaultNotActive` - Vault is not in `Active` status
+- `Error::AlreadyValidated` - Milestone has already been validated for this vault
+- `Error::MilestoneExpired` - Current timestamp is at or past `end_timestamp`
+
+**Requirements:**
 - Vault must exist and be in `Active` status
-- Caller must be the designated verifier (if set)
+- Milestone must not have been previously validated
+- Caller must be the designated verifier (if set) or creator (if no verifier)
 - Current timestamp must be before `end_timestamp`
 
 **Emits:** [`milestone_validated`](#milestone_validated) event
@@ -297,66 +304,61 @@ Emitted when a milestone is successfully validated.
 
 ## Security and Trust Model
 
-This section outlines the security properties, trust assumptions, and known limitations of the Disciplr Vault contract to assist auditors and users.
+This section outlines the security assumptions, trust model, and known limitations of the Disciplr Vault contract. It is intended for auditors, developers, and users to understand the risks and guarantees provided by the system.
 
 ### Trust Model
 
-1. **Absolute Verifier Power**: If a `verifier` is designated, they hold absolute power over the milestone validation process. The contract cannot verify off-chain project completion; it relies entirely on the `verifier`'s signature or authorization.
-2. **Creator Authority**: The `creator` is the only address authorized to `create_vault` or `cancel_vault`. They must authorize the initial USDC funding.
-3. **No Administrative Overrides**: There is no "admin" or "owner" role with the power to sweep funds or override the vault logic. Funds can only flow to the predefined `success_destination`, `failure_destination`, or back to the `creator` on cancellation.
+1. **Verifier Trust (Critical)**: When a `verifier` is designated (via `Some(Address)`), that address has **absolute power** to validate the milestone and cause funds to be released to the `success_destination` before the deadline. If the verifier is compromised or malicious, they can release funds prematurely or to a non-compliant recipient.
+2. **Creator Power**: If no `verifier` is set (`None`), only the `creator` can validate the milestone. Additionally, the `creator` can cancel the vault at any time to reclaim funds, assuming the vault is still `Active`. 
+3. **Immutable Destinations**: Once a vault is created, the `success_destination` and `failure_destination` are immutable. This prevents redirection of funds after the vault is funded, assuming the core contract logic remains secure.
 
-### External Dependencies
+### Security Assumptions
 
-1. **USDC Token Contract**: The contract interacts with an external USDC token address (Stellar Asset Contract). The security of the vault depends on the integrity and availability of this external contract.
-2. **Ledger Reliability**: The contract relies on the Stellar network's ledger timestamp for all timing constraints (`start_timestamp`, `end_timestamp`).
+1. **Stellar Ledger Integrity**: We assume the underlying Stellar blockchain and Soroban runtime correctly enforce authorization (`require_auth`) and maintain state integrity.
+2. **Ledger Timestamp**: The contract relies on `env.ledger().timestamp()` for all time-based logic (start/end windows). We assume ledger timestamps are reasonably accurate and monotonic as per Stellar network consensus.
+3. **Token Contract Behavior**: The contract interacts with a USDC token contract (standard Soroban token interface). We assume the token contract is honest and follows the expected transfer behavior.
 
-### Token Callback Assumptions (Soroban)
+### Reentrancy and Token Callback Assumptions
 
-Soroban's native token (`transfer`) is **atomic**:
-- The transfer completes entirely or reverts completely
-- No callback hooks are invoked during token transfers
-- This eliminates reentrancy vectors that exist in EVM-based systems
+The Disciplr Vault contract is protected against reentrancy attacks through the following mechanisms:
 
-**Supported Token Types:**
-- This contract supports only the canonical Stellar Asset Contract (SAC) or Soroban Token
-- Custom token contracts that implement callback hooks are **disallowed**
-- All token operations verify the provided token address matches the initialized canonical token
+#### Soroban Token Transfer Atomicity
 
-**Security Implications:**
-1. **No Reentrancy via Token Callbacks**: Since Soroban tokens do not invoke callbacks on the recipient, there is no reentrancy risk through token transfers
-2. **CEI Pattern Compliance**: Contract state updates occur after token transfers complete
-3. **State Consistency**: Vault status changes are persisted atomically with fund transfers
+The Soroban token `transfer` operation is **atomic** — it completes entirely within a single contract invocation without invoking callbacks to the calling contract. Specifically:
 
-### Token Address Enforcement
+- When `token_client.transfer(&from, &to, &amount)` is called, the token contract executes the transfer internally and returns immediately
+- There is **no callback mechanism** that would allow the token contract to re-invoke the Disciplr Vault contract during a transfer
+- This means there are no reentrancy vectors via malicious token contracts in standard Soroban token implementations
 
-The contract enforces strict token address validation:
-- Contract must be initialized with a canonical token address via `initialize()`
-- All token-moving functions validate the provided token matches the initialized address
-- This prevents draining attacks via mismatched token contract arguments
+#### Custom Token Restrictions
 
-**Error Codes:**
-- `Error::TokenNotInitialized (10)`: Contract was called before `initialize()`
-- `Error::InvalidTokenAddress (11)`: Provided token address does not match initialized token
+For deployments using the standard Soroban token interface (including Stellar Asset Contracts and standard ERC-20-like tokens deployed on Soroban):
 
-### Assumptions
+- **No custom token callbacks**: The contract assumes the token being used does not implement callback hooks to the caller
+- **Assumption**: Custom tokens that implement reentrant callbacks are not supported in standard deployments
+- **Mitigation**: If custom tokens are allowed, additional guards (e.g., reentrancy locks) should be implemented
 
-1. **Immutable Destinations**: The `success_destination` and `failure_destination` are fixed at vault creation and cannot be changed.
-2. **USDC Compliance**: It is assumed the provided `usdc_token` address follows the standard Soroban/Stellar token interface.
+#### Deployment-Specific Assumptions
 
-### Known Limitations & Security Notes
+This documentation assumes:
 
-1. **Checks-Effects-Interactions (CEI)**: In `release_funds`, `redirect_funds`, and `cancel_vault`, the USDC transfer is initiated *before* the internal status is updated to `Completed`, `Failed`, or `Cancelled`. While Soroban's atomicity safeguards against most reentrancy/partial-success risks, this is a deviation from the strict CEI pattern.
-2. **Lack of Emergency Stops**: There is currently no circuit breaker or emergency pause mechanism.
-3. **Precision**: All amounts are handled as `i128` in stroops (7 decimals for USDC); users must ensure they provide correct decimal-adjusted amounts.
+1. **Standard Stellar Asset Contract (SAC)**: When using Stellar's native USDC or other Stellar Asset Contracts, the token interface provides no callback mechanism
+2. **No custom token allowlist**: The contract currently does not enforce an allowlist of permitted token contracts
+3. **Trust in token contract**: Users must trust that the token contract behaves according to its documented interface
 
-### Recommendations for Production
+### Known Limitations & Risks
 
-1. **Use Soroban Token Interface**: Implement standard token operations for USDC
-2. **Add Access Control**: Implement `Ownable` pattern for admin functions
-3. **Circuit Breaker**: Add emergency pause functionality
-4. **Upgradeability**: Consider proxy pattern for contract upgrades
-5. **Comprehensive Tests**: Achieve 95%+ test coverage
-6. **External Audits**: Have security experts review before mainnet deployment
+1. **USDC Token Address Consistency**: The `usdc_token` address is **not stored** in the vault data. Instead, it is passed as an argument to methods like `release_funds`, `redirect_funds`, and `cancel_vault`. 
+   > [!WARNING]
+   > There is a risk that a caller provides a different token address than the one used during vault creation. Users should verify the token contract used in interactions matches the intended asset.
+2. **CEI Pattern Violations**: Some methods perform token transfers **before** updating the internal vault status. While Soroban's atomicity mitigates some traditional reentrancy risks, following the Checks-Effects-Interactions (CEI) pattern more strictly is a recommended enhancement for future versions.
+3. **No Administrative Overrides**: There is no "admin" or "owner" role with the power to rescue funds from a stalled vault (e.g., if a verifier loses their key and the deadline is far in the future). Funds are strictly bound by the `end_timestamp` and authorization rules.
+4. **Lack of Reentrancy Guards**: The contract does not currently implement explicit reentrancy guards, relying instead on the synchronous and atomic nature of Soroban contract calls.
+
+### Recommendations for Integration
+
+- **Off-chain Verification**: The `milestone_hash` should represent a clear, legally or technically binding document that both creator and verifier agree upon.
+- **Multisig Verifiers**: For high-value vaults, we highly recommend using a multisig address (G-address or contract-based account) as the `verifier`.
 
 ---
 
