@@ -176,24 +176,12 @@ impl DisciplrVault {
 
     /// Allows the verifier (or authorized party) to validate milestone completion.
     ///
-<<<<<<< doc/cei-soroban
-    /// This function follows the **Checks-Effects-Interactions** pattern:
-    /// 1. **Checks**: Verifies vault exists, is `Active`, and the caller is authorized.
-    /// 2. **Effects**: Sets `milestone_validated = true` and emits `milestone_validated`.
-    ///
-    /// # Errors
-    /// - `Error::VaultNotFound`: if `vault_id` does not exist.
-    /// - `Error::VaultNotActive`: if the vault is already in a terminal state.
-    /// - `Error::MilestoneExpired`: if the current time is at or past `end_timestamp`.
-    /// - `Error::NotAuthorized`: if the caller is not the `verifier` (or `creator` if no verifier).
-=======
     /// # Safety and Trust
     /// When verifier is `Some(addr)`, only that address may validate; when `None`, only the creator may validate.
     /// Rejects when current time >= `end_timestamp` (`Error::MilestoneExpired`).
     ///
     /// # Events
     /// Emits `milestone_validated` on success.
->>>>>>> main
     pub fn validate_milestone(env: Env, vault_id: u32) -> Result<bool, Error> {
         let vault_key = DataKey::Vault(vault_id);
         let mut vault: ProductivityVault = env
@@ -230,19 +218,6 @@ impl DisciplrVault {
     // release_funds
     // -----------------------------------------------------------------------
 
-<<<<<<< doc/cei-soroban
-    /// Releases vault funds to the success destination.
-    ///
-    /// This function follows the **Checks-Effects-Interactions** pattern:
-    /// 1. **Checks**: Verifies vault exists, is `Active`, and release conditions are met.
-    /// 2. **Effects**: Sets `status = Completed` and emits `funds_released`.
-    /// 3. **Interactions**: Transfers USDC tokens from the contract to `success_destination`.
-    ///
-    /// # Errors
-    /// - `Error::VaultNotFound`: if `vault_id` does not exist.
-    /// - `Error::VaultNotActive`: if the vault is already in a terminal state.
-    /// - `Error::NotAuthorized`: if called before deadline without milestone validation.
-=======
     /// Release vault funds to `success_destination`.
     ///
     /// # Prerequisites
@@ -251,7 +226,6 @@ impl DisciplrVault {
     ///
     /// # Events
     /// Emits `funds_released` with the released amount.
->>>>>>> main
     pub fn release_funds(env: Env, vault_id: u32, usdc_token: Address) -> Result<bool, Error> {
         let vault_key = DataKey::Vault(vault_id);
         let mut vault: ProductivityVault = env
@@ -297,19 +271,6 @@ impl DisciplrVault {
     // redirect_funds
     // -----------------------------------------------------------------------
 
-<<<<<<< doc/cei-soroban
-    /// Redirects funds to the failure destination.
-    ///
-    /// This function follows the **Checks-Effects-Interactions** pattern:
-    /// 1. **Checks**: Verifies vault exists, is `Active`, deadline passed, and no validation occurred.
-    /// 2. **Effects**: Sets `status = Failed` and emits `funds_redirected`.
-    /// 3. **Interactions**: Transfers USDC tokens from the contract to `failure_destination`.
-    ///
-    /// # Errors
-    /// - `Error::VaultNotFound`, `Error::VaultNotActive`.
-    /// - `Error::InvalidTimestamp`: if called before the `end_timestamp`.
-    /// - `Error::NotAuthorized`: if the milestone has already been validated.
-=======
     /// Redirect funds to `failure_destination` (e.g. after deadline without validation).
     ///
     /// # Prerequisites
@@ -319,7 +280,6 @@ impl DisciplrVault {
     ///
     /// # Events
     /// Emits `funds_redirected` with the redirected amount.
->>>>>>> main
     pub fn redirect_funds(env: Env, vault_id: u32, usdc_token: Address) -> Result<bool, Error> {
         let vault_key = DataKey::Vault(vault_id);
         let mut vault: ProductivityVault = env
@@ -366,23 +326,12 @@ impl DisciplrVault {
 
     /// Cancel vault and return funds to creator.
     ///
-<<<<<<< doc/cei-soroban
-    /// This function follows the **Checks-Effects-Interactions** pattern:
-    /// 1. **Checks**: Verifies vault exists, is `Active`, and `creator` authorization.
-    /// 2. **Effects**: Sets `status = Cancelled` and emits `vault_cancelled`.
-    /// 3. **Interactions**: Transfers USDC tokens back to the `creator`.
-    ///
-    /// # Errors
-    /// - `Error::VaultNotFound`, `Error::VaultNotActive`.
-    /// - `Error::NotAuthorized`: if `creator.require_auth()` fails.
-=======
     /// # Prerequisites
     /// - Only the creator may call this method (`creator.require_auth()`).
     /// - Vault status must be `Active`.
     ///
     /// # Events
     /// Emits `vault_cancelled`.
->>>>>>> main
     pub fn cancel_vault(env: Env, vault_id: u32, usdc_token: Address) -> Result<bool, Error> {
         let vault_key = DataKey::Vault(vault_id);
         let mut vault: ProductivityVault = env
