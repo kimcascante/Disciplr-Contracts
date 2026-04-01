@@ -1,3 +1,4 @@
+<<<<<<< doc/amount-bounds
 #![no_std]
 #![allow(clippy::too_many_arguments)]
 
@@ -85,9 +86,26 @@ pub struct ProductivityVault {
 // ---------------------------------------------------------------------------
 
 // Constants to prevent abuse, spam, and potential overflow issues
-pub const MAX_VAULT_DURATION: u64 = 365 * 24 * 60 * 60; // 1 year in seconds
-pub const MIN_AMOUNT: i128 = 10_000_000; // 1 USDC with 7 decimals
-pub const MAX_AMOUNT: i128 = 10_000_000_000_000; // 10 million USDC with 7 decimals
+
+/// Maximum allowed vault duration in seconds (365 days).
+///
+/// Enforced in `create_vault`: `end_timestamp − start_timestamp` must not
+/// exceed this value, otherwise returns `Error::DurationTooLong`.
+pub const MAX_VAULT_DURATION: u64 = 365 * 24 * 60 * 60;
+
+/// Minimum vault amount in stroops (1 USDC).
+///
+/// Stellar USDC uses 7 decimal places: 1 USDC = 10_000_000 stroops.
+/// Enforced in `create_vault`: `amount` must be ≥ `MIN_AMOUNT`,
+/// otherwise returns `Error::InvalidAmount`.
+pub const MIN_AMOUNT: i128 = 10_000_000; // 1 USDC
+
+/// Maximum vault amount in stroops (10,000,000 USDC).
+///
+/// Stellar USDC uses 7 decimal places: 1 USDC = 10_000_000 stroops.
+/// Enforced in `create_vault`: `amount` must be ≤ `MAX_AMOUNT`,
+/// otherwise returns `Error::InvalidAmount`.
+pub const MAX_AMOUNT: i128 = 10_000_000_000_000; // 10M USDC
 
 #[contracttype]
 #[derive(Clone)]
@@ -243,6 +261,8 @@ impl DisciplrVault {
             .get(&vault_key)
             .ok_or(Error::VaultNotFound)?;
 
+        vault.creator.require_auth();
+
         if vault.status != VaultStatus::Active {
             return Err(Error::VaultNotActive); // Or InvalidStatus as appropriate
         }
@@ -290,7 +310,7 @@ impl DisciplrVault {
             return Err(Error::VaultNotActive);
         }
 
-        if env.ledger().timestamp() < vault.end_timestamp {
+        if env.ledger().timestamp() <= vault.end_timestamp {
             return Err(Error::InvalidTimestamp); // Too early to redirect
         }
 
@@ -1249,6 +1269,33 @@ mod tests {
         let client = setup.client();
         client.cancel_vault(&999u32, &setup.usdc_token);
     }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #3)")]
+    fn test_double_cancel_fails_142() {
+        let setup = TestSetup::new();
+        setup.env.mock_all_auths();
+        let vault_id = setup.create_default_vault();
+        setup
+            .client()
+            .cancel_vault(&vault_id, &setup.usdc_client().address);
+        setup
+            .client()
+            .cancel_vault(&vault_id, &setup.usdc_client().address);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #4)")]
+    fn test_redirect_exact_deadline_fails_150() {
+        let setup = TestSetup::new();
+        setup.env.mock_all_auths();
+        let vault_id = setup.create_default_vault();
+        let vault = setup.client().get_vault_state(&vault_id).unwrap();
+        setup.env.ledger().set_timestamp(vault.end_timestamp);
+        setup
+            .client()
+            .redirect_funds(&vault_id, &setup.usdc_client().address);
+    }
 }
 
 #[cfg(test)]
@@ -1526,3 +1573,5 @@ mod test {
         assert_eq!(token_client.balance(&vault_contract), MIN_AMOUNT);
     }
 }
+=======
+>>>>>>> main
