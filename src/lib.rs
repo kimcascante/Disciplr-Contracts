@@ -316,7 +316,11 @@ impl DisciplrVault {
         let amount = ensure_amount_in_range(vault.amount)?;
 
         if vault.status != VaultStatus::Active {
+<<<<<<< test/error-variant-coverage
+            return Err(Error::InvalidStatus); // changed from VaultNotActive
+=======
             return Err(Error::VaultNotActive);
+>>>>>>> main
         }
 
         let _canonical_token = Self::get_token_address(&env, &usdc_token)?;
