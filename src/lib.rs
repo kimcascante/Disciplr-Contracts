@@ -96,6 +96,7 @@ pub struct ProductivityVault {
 pub enum DataKey {
     Vault(u32),
     VaultCount,
+    TokenAddress,
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +108,37 @@ pub struct DisciplrVault;
 
 #[contractimpl]
 impl DisciplrVault {
+    /// Initialize the contract with the canonical USDC token address.
+    ///
+    /// This must be called before any token operations. Once set, the token address
+    /// cannot be changed. All token transfers will verify the provided token matches
+    /// the initialized address.
+    ///
+    /// # Security Note
+    /// This prevents draining via mismatched token contract arguments. The contract
+    /// only accepts the single canonical token address set during initialization.
+    pub fn initialize(env: Env, usdc_token: Address) -> Result<(), Error> {
+        let key = DataKey::TokenAddress;
+        if env.storage().instance().has(&key) {
+            return Err(Error::InvalidStatus);
+        }
+        env.storage().instance().set(&key, &usdc_token);
+        Ok(())
+    }
+
+    fn get_token_address(env: &Env, provided_token: &Address) -> Result<Address, Error> {
+        let key = DataKey::TokenAddress;
+        match env.storage().instance().get::<_, Address>(&key) {
+            Some(canonical) => {
+                if provided_token != &canonical {
+                    return Err(Error::InvalidTokenAddress);
+                }
+                Ok(canonical)
+            }
+            None => Err(Error::TokenNotInitialized),
+        }
+    }
+
     /// Create a new productivity vault. Transfers USDC from creator to contract.
     ///
     /// # Validation Rules
@@ -115,6 +147,7 @@ impl DisciplrVault {
     ///
     /// # Prerequisites
     /// Creator must have sufficient USDC balance and authorize the transaction.
+    /// Contract must be initialized via `initialize()`.
     pub fn create_vault(
         env: Env,
         usdc_token: Address,
@@ -128,6 +161,8 @@ impl DisciplrVault {
         failure_destination: Address,
     ) -> Result<u32, Error> {
         creator.require_auth();
+
+        let _canonical_token = Self::get_token_address(&env, &usdc_token)?;
 
         // Validate amount bounds
         if amount < MIN_AMOUNT {
@@ -242,6 +277,10 @@ impl DisciplrVault {
     // -----------------------------------------------------------------------
 
     /// Release vault funds to `success_destination`.
+    ///
+    /// Funds can be released if:
+    /// - The milestone has been validated (via `validate_milestone`), OR
+    /// - The current time has reached or passed `end_timestamp`
     pub fn release_funds(env: Env, vault_id: u32, usdc_token: Address) -> Result<bool, Error> {
         let vault_key = DataKey::Vault(vault_id);
         let mut vault: ProductivityVault = env
@@ -251,10 +290,11 @@ impl DisciplrVault {
             .ok_or(Error::VaultNotFound)?;
 
         if vault.status != VaultStatus::Active {
-            return Err(Error::VaultNotActive); // Or InvalidStatus as appropriate
+            return Err(Error::VaultNotActive);
         }
 
-        // Check release conditions.
+        let _canonical_token = Self::get_token_address(&env, &usdc_token)?;
+
         let now = env.ledger().timestamp();
         let deadline_reached = now >= vault.end_timestamp;
         let validated = vault.milestone_validated;
@@ -297,11 +337,12 @@ impl DisciplrVault {
             return Err(Error::VaultNotActive);
         }
 
+        let _canonical_token = Self::get_token_address(&env, &usdc_token)?;
+
         if env.ledger().timestamp() < vault.end_timestamp {
-            return Err(Error::InvalidTimestamp); // Too early to redirect
+            return Err(Error::InvalidTimestamp);
         }
 
-        // If milestone was validated the funds should go to success, not failure.
         if vault.milestone_validated {
             return Err(Error::NotAuthorized);
         }
@@ -341,6 +382,8 @@ impl DisciplrVault {
         if vault.status != VaultStatus::Active {
             return Err(Error::VaultNotActive);
         }
+
+        let _canonical_token = Self::get_token_address(&env, &usdc_token)?;
 
         let token_client = token::Client::new(&env, &usdc_token);
         token_client.transfer(
@@ -438,6 +481,8 @@ mod tests {
 
             // Deploy contract.
             let contract_id = env.register(DisciplrVault, ());
+            let client = DisciplrVaultClient::new(&env, &contract_id);
+            client.initialize(&usdc_addr);
 
             TestSetup {
                 env,
@@ -1143,6 +1188,8 @@ mod tests {
 
         usdc_asset.mint(&creator, &amount);
 
+        client.initialize(&usdc_addr);
+
         let vault_id = client.create_vault(
             &usdc_addr,
             &creator,
@@ -1316,6 +1363,7 @@ mod test {
         token_admin.mint(&creator, &1000);
 
         let vault_client = DisciplrVaultClient::new(&env, &vault_contract);
+        vault_client.initialize(&token_address);
         let milestone_hash = BytesN::from_array(&env, &[1u8; 32]);
 
         let vault_id = vault_client.create_vault(
@@ -1347,6 +1395,7 @@ mod test {
         let vault_contract = create_vault_contract(&env);
 
         let vault_client = DisciplrVaultClient::new(&env, &vault_contract);
+        vault_client.initialize(&token_address);
         let milestone_hash = BytesN::from_array(&env, &[1u8; 32]);
 
         vault_client.create_vault(
@@ -1374,6 +1423,7 @@ mod test {
         let vault_contract = create_vault_contract(&env);
 
         let vault_client = DisciplrVaultClient::new(&env, &vault_contract);
+        vault_client.initialize(&token_address);
         let milestone_hash = BytesN::from_array(&env, &[1u8; 32]);
 
         vault_client.create_vault(
@@ -1401,6 +1451,7 @@ mod test {
         let vault_contract = create_vault_contract(&env);
 
         let vault_client = DisciplrVaultClient::new(&env, &vault_contract);
+        vault_client.initialize(&token_address);
         let milestone_hash = BytesN::from_array(&env, &[1u8; 32]);
 
         vault_client.create_vault(
@@ -1428,6 +1479,7 @@ mod test {
         let vault_contract = create_vault_contract(&env);
 
         let vault_client = DisciplrVaultClient::new(&env, &vault_contract);
+        vault_client.initialize(&token_address);
         let milestone_hash = BytesN::from_array(&env, &[1u8; 32]);
 
         vault_client.create_vault(
@@ -1458,6 +1510,7 @@ mod test {
         token_admin.mint(&creator, &100);
 
         let vault_client = DisciplrVaultClient::new(&env, &vault_contract);
+        vault_client.initialize(&token_address);
         let milestone_hash = BytesN::from_array(&env, &[1u8; 32]);
 
         vault_client.create_vault(
@@ -1487,6 +1540,7 @@ mod test {
         token_admin.mint(&creator, &1000);
 
         let vault_client = DisciplrVaultClient::new(&env, &vault_contract);
+        vault_client.initialize(&token_address);
         let milestone_hash = BytesN::from_array(&env, &[1u8; 32]);
 
         let vault_id = vault_client.create_vault(
@@ -1519,6 +1573,7 @@ mod test {
         token_admin.mint(&creator, &500);
 
         let vault_client = DisciplrVaultClient::new(&env, &vault_contract);
+        vault_client.initialize(&token_address);
         let milestone_hash = BytesN::from_array(&env, &[1u8; 32]);
 
         let vault_id = vault_client.create_vault(
