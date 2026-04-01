@@ -366,12 +366,17 @@ Emitted when a milestone is successfully validated.
 
 ---
 
-## Security Assumptions
+## Security and Trust Model
 
-### Authentication & Authorization
+The Disciplr Vault contract is designed with specific security guarantees and trust assumptions:
 
-1. **Creator Authorization**: The vault creator must authorize transactions via `require_auth()`. This ensures only the creator can initiate vault creation or cancellation.
+- **Verifier Trust**: Designated verifiers have absolute power over milestone validation.
+- **Immutable Destinations**: success/failure destinations cannot be changed once the vault is created.
+- **USDC Address Risk**: The contract does not pin the USDC token address; it must be verified by callers during interaction.
 
+<<<<<<< cancel_vault--prevent-cancel-if-milestone-already-validated
+For a comprehensive analysis of the security model, assumptions, and known limitations, please refer to the [detailed security documentation in vesting.md](vesting.md#security-and-trust-model).
+=======
 2. **Verifier Role**: An optional verifier can be designated during vault creation. If set, only the verifier can validate milestones. If not set, anyone can validate (which may be useful for decentralized verification).
 
 3. **Destination Addresses**: Once set, success and failure destinations cannot be modified. This prevents fund redirection attacks.
@@ -480,6 +485,7 @@ The contract enforces strict token address validation:
 4. **Upgradeability**: Consider proxy pattern for contract upgrades
 5. **Comprehensive Tests**: Achieve 95%+ test coverage
 6. **External Audits**: Have security experts review before mainnet deployment
+>>>>>>> main
 
 ---
 
