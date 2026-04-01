@@ -367,8 +367,6 @@ fn test_get_vault_state_cancelled_vault_remains_readable() {
 }
 
 #[test]
-<<<<<<< test/error-variant-coverage
-fn test_error_variants_coverage() {
     let (env, client, usdc, usdc_asset) = setup();
 
     let creator = Address::generate(&env);
@@ -439,7 +437,6 @@ fn test_error_variants_coverage() {
         disciplr_vault::Error::InvalidTimestamps,
         disciplr_vault::Error::DurationTooLong,
     ];
-=======
 #[should_panic(expected = "Error(Contract, #11)")]
 fn test_create_vault_wrong_token_address() {
     let (env, client, _usdc, usdc_asset) = setup();
@@ -563,5 +560,4 @@ fn test_redirect_funds_wrong_token_address() {
     env.ledger().set_timestamp(now + 86_401);
 
     client.redirect_funds(&vault_id, &wrong_addr);
->>>>>>> main
 }
